@@ -29,7 +29,7 @@ const moduleLabel: Record<Mechanism, string> = {
   radiation: 'Radiación',
 };
 
-const developers = 'Velazco De la Cruz Byron Esteban';
+const developers = 'Grismaldo Bone';
 
 const moduleTone: Record<Mechanism, 'warm' | 'cold' | 'rad'> = {
   conduction: 'warm',
