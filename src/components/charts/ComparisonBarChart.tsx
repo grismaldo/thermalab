@@ -14,6 +14,7 @@ interface ComparisonBarChartProps {
   dataKey: string;
   name: string;
   color?: string;
+  emptyMessage?: string;
 }
 
 export function ComparisonBarChart({
@@ -21,7 +22,16 @@ export function ComparisonBarChart({
   dataKey,
   name,
   color = '#f97316',
+  emptyMessage = 'Revisa los valores ingresados para ver la comparación.',
 }: ComparisonBarChartProps) {
+  if (!data.length) {
+    return (
+      <div className="grid h-72 w-full place-items-center rounded-xl border border-dashed border-slate-700/70 bg-slate-950/40 px-6 text-center">
+        <p className="max-w-sm text-sm leading-relaxed text-slate-400">{emptyMessage}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">

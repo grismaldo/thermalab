@@ -20,9 +20,24 @@ interface TemperatureProfileChartProps {
   series: Series[];
   xLabel: string;
   yLabel: string;
+  emptyMessage?: string;
 }
 
-export function TemperatureProfileChart({ data, series, xLabel, yLabel }: TemperatureProfileChartProps) {
+export function TemperatureProfileChart({
+  data,
+  series,
+  xLabel,
+  yLabel,
+  emptyMessage = 'Revisa los valores ingresados para ver el gráfico.',
+}: TemperatureProfileChartProps) {
+  if (!data.length) {
+    return (
+      <div className="grid h-72 w-full place-items-center rounded-xl border border-dashed border-slate-700/70 bg-slate-950/40 px-6 text-center">
+        <p className="max-w-sm text-sm leading-relaxed text-slate-400">{emptyMessage}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">

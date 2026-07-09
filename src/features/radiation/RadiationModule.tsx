@@ -3,10 +3,11 @@ import { Orbit, Radiation, Save } from 'lucide-react';
 import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart';
 import { TemperatureProfileChart } from '../../components/charts/TemperatureProfileChart';
 import { ThermalDiagram } from '../../components/charts/ThermalDiagram';
-import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { ExportButton } from '../../components/ui/ExportButton';
 import { FormulaDisplay } from '../../components/ui/FormulaDisplay';
+import { ModuleShell } from '../../components/ui/ModuleShell';
+import { PrintReportButton } from '../../components/ui/PrintReportButton';
 import { ResultCard } from '../../components/ui/ResultCard';
 import { SliderInput } from '../../components/ui/SliderInput';
 import {
@@ -20,8 +21,16 @@ import {
   validateEmissivity,
   validatePositive,
 } from '../../lib/calculations';
+import {
+  INPUT_ERROR,
+  INVALID,
+  inputClass,
+  numberFrom,
+  selectClass,
+  stringFrom,
+} from '../../lib/moduleHelpers';
 import { getSurface, SURFACES } from '../../lib/surfaces';
-import type { NewSimulation, SavedSimulation, SimulationValue } from '../../types';
+import type { NewSimulation, SavedSimulation } from '../../types';
 import { BLACKBODY_PRACTICE } from './PracticeBlackbody';
 import { EMISSIVITY_PRACTICE } from './PracticeEmissivity';
 
@@ -30,18 +39,6 @@ interface RadiationModuleProps {
   onLoaded: () => void;
   onSave: (simulation: NewSimulation) => void;
 }
-
-const INVALID = '—';
-const INPUT_ERROR = 'Revisa los valores ingresados.';
-
-const selectClass =
-  'h-11 w-full rounded-lg border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-semibold text-slate-100 transition focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30';
-
-const numberFrom = (value: SimulationValue | undefined, fallback: number): number =>
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-
-const stringFrom = (value: SimulationValue | undefined, fallback: string): string =>
-  typeof value === 'string' ? value : fallback;
 
 export function RadiationModule({ loadedSimulation, onLoaded, onSave }: RadiationModuleProps) {
   const [practice, setPractice] = useState(EMISSIVITY_PRACTICE.name);
@@ -130,7 +127,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
   const q = result?.q ?? 0;
   const exportData = {
     name: simulationName,
-    module: 'radiation',
+    module: 'radiation' as const,
     practice,
     parameters: {
       surfaceId,
@@ -145,8 +142,24 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
     results: {
       q: result?.q ?? null,
       blackbodyPower: result?.blackbodyPower ?? null,
+      emittedPower: result?.emittedPower ?? null,
+      absorbedPower: result?.absorbedPower ?? null,
+      netFlux: result?.netFlux ?? null,
       sigma: SIGMA,
     },
+  };
+
+  const formula = {
+    title: 'Superficie gris · balance radiativo',
+    formula:
+      'E_b = σ T⁴; E = ε E_b; G_abs = ε σ T_amb⁴; q″ = E − G_abs; Q = q″ · A',
+    substituted: `E_b = ${formatNumber(result?.blackbodyPower ?? 0, 2)} W/m²; E = ${formatNumber(
+      result?.emittedPower ?? 0,
+      2,
+    )} W/m²; G_abs = ${formatNumber(result?.absorbedPower ?? 0, 2)} W/m²; Q = ${
+      errors.length ? 'valores no válidos' : `${formatNumber(q, 2)} W`
+    }`,
+    note: 'El intercambio neto asume entorno grande a T_amb y superficie gris (α = ε).',
   };
 
   const saveActiveSimulation = () => {
@@ -160,44 +173,33 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
   };
 
   return (
-    <div className="animate-fade-in-up space-y-5">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div>
-          <Badge tone="rad">Stefan-Boltzmann</Badge>
-          <h2 className="mt-3 text-2xl font-black text-slate-50">Módulo de radiación</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-            Explora cómo las superficies emiten calor por radiación y cómo la emisividad cambia el resultado.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={loadEmissivityPractice}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-violet-300/40 bg-violet-400/12 px-3 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/20 active:scale-[0.98]"
-          >
-            <Radiation size={16} aria-hidden="true" />
-            Práctica 1
-          </button>
-          <button
-            type="button"
-            onClick={loadBlackbodyPractice}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-orange-300/40 bg-orange-400/12 px-3 py-2 text-sm font-semibold text-orange-100 transition hover:bg-orange-400/20 active:scale-[0.98]"
-          >
-            <Orbit size={16} aria-hidden="true" />
-            Práctica 2
-          </button>
-        </div>
-      </div>
-
+    <ModuleShell
+      badge="Stefan-Boltzmann"
+      badgeTone="rad"
+      title="Módulo de radiación"
+      description="Cuerpo negro, superficies grises, emisividad y balance energético emitido vs absorbido vs neto."
+      practices={[
+        {
+          label: 'Práctica 1',
+          onClick: loadEmissivityPractice,
+          icon: <Radiation size={16} aria-hidden="true" />,
+          tone: 'rad',
+        },
+        {
+          label: 'Práctica 2',
+          onClick: loadBlackbodyPractice,
+          icon: <Orbit size={16} aria-hidden="true" />,
+          tone: 'warm',
+        },
+      ]}
+    >
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card title="Variables de entrada" subtitle={practice}>
           <div className="space-y-4">
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">
-                Nombre de la simulación
-              </span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">Nombre de la simulación</span>
               <input
-                className="h-11 w-full rounded-lg border border-slate-700/80 bg-slate-950/70 px-3 text-sm text-slate-100 transition focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30"
+                className={inputClass}
                 value={simulationName}
                 onChange={(event) => setSimulationName(event.target.value)}
               />
@@ -205,7 +207,11 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
 
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-slate-200">Superficie</span>
-              <select className={selectClass} value={surfaceId} onChange={(event) => handleSurfaceChange(event.target.value)}>
+              <select
+                className={selectClass}
+                value={surfaceId}
+                onChange={(event) => handleSurfaceChange(event.target.value)}
+              >
                 {SURFACES.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name} — ε={item.epsilon}
@@ -266,6 +272,16 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
                 Guardar
               </button>
               <ExportButton filename="thermalab-radiacion.json" data={exportData} />
+              <PrintReportButton
+                title={simulationName}
+                module="Radiación"
+                practice={practice}
+                parameters={exportData.parameters}
+                results={exportData.results}
+                formula={formula.formula}
+                substituted={formula.substituted}
+                interpretation={formula.note}
+              />
             </div>
           </div>
         </Card>
@@ -280,30 +296,38 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
               q,
             }}
           />
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <ResultCard
-              label="Radiación neta"
+              label="Radiación neta Q"
               value={errors.length ? INVALID : formatNumber(q, 2)}
               unit={errors.length ? undefined : 'W'}
               tone="rad"
               interpretation={
                 errors.length
                   ? INPUT_ERROR
-                  : `La superficie intercambia ${formatNumber(Math.abs(q) / area, 2)} W/m² netos.`
+                  : `Flujo neto ${formatNumber(result?.netFlux ?? 0, 2)} W/m².`
               }
             />
             <ResultCard
-              label="Emisión máxima teórica"
+              label="Emitido E"
+              value={errors.length ? INVALID : formatNumber(result?.emittedPower ?? 0, 2)}
+              unit={errors.length ? undefined : 'W/m²'}
+              tone="warm"
+              interpretation="Potencia emitida por la superficie gris (ε · σ · T⁴)."
+            />
+            <ResultCard
+              label="Absorbido G_abs"
+              value={errors.length ? INVALID : formatNumber(result?.absorbedPower ?? 0, 2)}
+              unit={errors.length ? undefined : 'W/m²'}
+              tone="cold"
+              interpretation="Irradiación absorbida del entorno (α = ε)."
+            />
+            <ResultCard
+              label="Cuerpo negro E_b"
               value={errors.length ? INVALID : formatNumber(result?.blackbodyPower ?? 0, 2)}
               unit={errors.length ? undefined : 'W/m²'}
               tone="warm"
-              interpretation="Máxima energía que podría emitir esa superficie si fuera un cuerpo negro ideal."
-            />
-            <ResultCard
-              label="Emisividad (ε)"
-              value={formatNumber(epsilon, 3)}
-              tone="cold"
-              interpretation={`${surface.name}: qué tan parecida es al cuerpo negro perfecto (0 = nada, 1 = igual).`}
+              interpretation={`${surface.name}: ε = ${formatNumber(epsilon, 3)} respecto al ideal.`}
             />
           </div>
         </div>
@@ -318,7 +342,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
             yLabel="Q (W)"
           />
         </Card>
-        <Card title="Cuerpo negro vs gris" subtitle="Calor emitido según la temperatura, para distintas emisividades">
+        <Card title="Cuerpo negro vs gris" subtitle="Calor emitido según la temperatura">
           <TemperatureProfileChart
             data={temperatureCurve}
             series={[
@@ -338,17 +362,13 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
         </Card>
         <Card title="Fórmula activa" subtitle={practice}>
           <FormulaDisplay
-            title="Superficie gris"
-            formula="Q_rad = ε * σ * A * (T_superficie⁴ - T_ambiente⁴)"
-            substituted={`Q = ${formatNumber(epsilon, 3)} * ${SIGMA.toExponential(3)} * ${formatNumber(
-              area,
-            )} * (${formatNumber(toKelvin(surfaceC), 2)}⁴ - ${formatNumber(toKelvin(ambientC), 2)}⁴) = ${
-              errors.length ? 'valores no válidos' : `${formatNumber(q, 2)} W`
-            }`}
-            note="En radiación, la temperatura se convierte internamente a kelvin (K) antes de elevar a la cuarta potencia."
+            title={formula.title}
+            formula={formula.formula}
+            substituted={formula.substituted}
+            note={formula.note}
           />
         </Card>
       </div>
-    </div>
+    </ModuleShell>
   );
 }

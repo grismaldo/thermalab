@@ -1,4 +1,5 @@
 import { formatNumber } from '../../lib/calculations';
+import type { ConductionGeometry } from '../../lib/calculations';
 
 type DiagramType = 'conduction' | 'convection' | 'radiation';
 
@@ -7,6 +8,9 @@ interface ConductionDiagramData {
   coldC: number;
   q: number;
   length: number;
+  geometry?: ConductionGeometry;
+  innerRadius?: number;
+  outerRadius?: number;
   layers?: Array<{ name: string; L: number; k: number }>;
 }
 
@@ -17,6 +21,8 @@ interface ConvectionDiagramData {
   h: number;
   q: number;
   regime: string;
+  geometry?: 'plate' | 'cylinder';
+  flowRate?: number;
 }
 
 interface RadiationDiagramData {
@@ -51,11 +57,18 @@ const layerColor = (k: number): string => {
 };
 
 export function ThermalDiagram({ type, conduction, convection, radiation }: ThermalDiagramProps) {
+  const geometry = conduction?.geometry ?? 'flat';
   const label =
     type === 'conduction'
-      ? 'Cómo baja la temperatura en la pared'
+      ? geometry === 'cylinder'
+        ? 'Conducción radial en cilindro hueco'
+        : geometry === 'sphere'
+          ? 'Conducción radial en esfera hueca'
+          : 'Cómo baja la temperatura en la pared'
       : type === 'convection'
-        ? 'Intercambio superficie–fluido'
+        ? convection?.geometry === 'cylinder'
+          ? 'Flujo cruzado sobre cilindro'
+          : 'Intercambio superficie–fluido'
         : 'Emisión de superficie gris';
 
   const conductionQ = Math.abs(conduction?.q ?? 0);
@@ -82,10 +95,21 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
   const ringStroke = clamp(2 + epsilon * 5, 2, 7);
   const radiationLineCount = clamp(Math.round(2 + epsilon * 5), 2, 7);
 
+  const ri = conduction?.innerRadius ?? 0.05;
+  const ro = conduction?.outerRadius ?? 0.1;
+  const radialScale = 90 / Math.max(ro, 0.01);
+  const innerR = clamp(ri * radialScale, 18, 55);
+  const outerR = clamp(ro * radialScale, innerR + 18, 95);
+
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-slate-950/50 p-4">
+    <div className="lab-panel rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm font-bold text-slate-100">{label}</p>
+        {type === 'conduction' && geometry !== 'flat' && (
+          <span className="font-mono-num text-xs font-semibold text-slate-400">
+            ri={formatNumber(ri, 3)} · ro={formatNumber(ro, 3)} m
+          </span>
+        )}
       </div>
       <svg viewBox="0 0 640 240" role="img" aria-label={label} className="h-56 w-full">
         <defs>
@@ -98,12 +122,16 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
             <stop offset="0%" stopColor="#f97316" />
             <stop offset="100%" stopColor={heatColor(radiation?.surfaceC ?? 220)} />
           </radialGradient>
+          <radialGradient id="pipe-grad" cx="40%" cy="40%" r="65%">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.75" />
+          </radialGradient>
           <marker id={`arrow-${type}`} markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
             <path d="M0,0 L8,4 L0,8 Z" fill={type === 'radiation' ? '#a78bfa' : '#f97316'} />
           </marker>
         </defs>
 
-        {type === 'conduction' && (
+        {type === 'conduction' && geometry === 'flat' && (
           <>
             {conductionLayers ? (
               conductionLayers.reduce<JSX.Element[]>((elements, layer, index) => {
@@ -158,17 +186,94 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
           </>
         )}
 
+        {type === 'conduction' && geometry === 'cylinder' && (
+          <>
+            <ellipse cx="220" cy="120" rx={outerR * 1.15} ry={outerR} fill="url(#pipe-grad)" opacity="0.85" />
+            <ellipse cx="220" cy="120" rx={innerR * 1.15} ry={innerR} fill="#0a0f1e" opacity="0.95" />
+            <ellipse cx="220" cy="120" rx={outerR * 1.15} ry={outerR} fill="none" stroke="#e2e8f0" strokeOpacity="0.4" />
+            {Array.from({ length: 4 }).map((_, index) => (
+              <line
+                key={index}
+                className="heat-flow"
+                x1={220 + outerR * 1.15 + 12}
+                x2="520"
+                y1={70 + index * 30}
+                y2={70 + index * 30}
+                stroke="#f97316"
+                strokeWidth={conductionArrowWidth}
+                markerEnd={`url(#arrow-${type})`}
+                style={{ animationDelay: `${index * 0.14}s` }}
+              />
+            ))}
+            <text x="160" y="28" fill={heatColor(conduction?.hotC ?? 80)} fontSize="16" fontWeight="700">
+              Tint {formatNumber(conduction?.hotC ?? 0, 1)} °C
+            </text>
+            <text x="400" y="28" fill={heatColor(conduction?.coldC ?? 20)} fontSize="16" fontWeight="700">
+              Text {formatNumber(conduction?.coldC ?? 0, 1)} °C
+            </text>
+            <text x="400" y="216" fill="#fed7aa" fontSize="15" fontWeight="700">
+              Q {formatNumber(conduction?.q ?? 0, 1)} W
+            </text>
+            <text x="120" y="216" fill="#cbd5e1" fontSize="13" fontWeight="700">
+              L = {formatNumber(conduction?.length ?? 0, 2)} m
+            </text>
+          </>
+        )}
+
+        {type === 'conduction' && geometry === 'sphere' && (
+          <>
+            <circle cx="220" cy="120" r={outerR} fill="url(#pipe-grad)" opacity="0.88" />
+            <circle cx="220" cy="120" r={innerR} fill="#0a0f1e" opacity="0.95" />
+            <circle cx="220" cy="120" r={outerR} fill="none" stroke="#e2e8f0" strokeOpacity="0.4" />
+            {Array.from({ length: 5 }).map((_, index) => {
+              const angle = (-40 + index * 20) * (Math.PI / 180);
+              const x1 = 220 + Math.cos(angle) * (outerR + 8);
+              const y1 = 120 + Math.sin(angle) * (outerR + 8);
+              return (
+                <line
+                  key={index}
+                  className="heat-flow"
+                  x1={x1}
+                  y1={y1}
+                  x2={x1 + 140}
+                  y2={y1}
+                  stroke="#f97316"
+                  strokeWidth={conductionArrowWidth * 0.85}
+                  markerEnd={`url(#arrow-${type})`}
+                  style={{ animationDelay: `${index * 0.1}s` }}
+                />
+              );
+            })}
+            <text x="150" y="28" fill={heatColor(conduction?.hotC ?? 80)} fontSize="16" fontWeight="700">
+              Tint {formatNumber(conduction?.hotC ?? 0, 1)} °C
+            </text>
+            <text x="400" y="28" fill={heatColor(conduction?.coldC ?? 20)} fontSize="16" fontWeight="700">
+              Text {formatNumber(conduction?.coldC ?? 0, 1)} °C
+            </text>
+            <text x="400" y="216" fill="#fed7aa" fontSize="15" fontWeight="700">
+              Q {formatNumber(conduction?.q ?? 0, 1)} W
+            </text>
+          </>
+        )}
+
         {type === 'convection' && (
           <>
-            <rect
-              x="80"
-              y="58"
-              width="150"
-              height="124"
-              rx="8"
-              fill={heatColor(convection?.surfaceC ?? 80)}
-              opacity="0.88"
-            />
+            {convection?.geometry === 'cylinder' ? (
+              <>
+                <ellipse cx="160" cy="120" rx="42" ry="62" fill={heatColor(convection?.surfaceC ?? 80)} opacity="0.9" />
+                <ellipse cx="160" cy="120" rx="42" ry="62" fill="none" stroke="#e2e8f0" strokeOpacity="0.35" />
+              </>
+            ) : (
+              <rect
+                x="80"
+                y="58"
+                width="150"
+                height="124"
+                rx="8"
+                fill={heatColor(convection?.surfaceC ?? 80)}
+                opacity="0.88"
+              />
+            )}
             <rect x="230" y="58" width="330" height="124" rx="8" fill="#0ea5e9" opacity={flowOpacity * 0.28} />
             {Array.from({ length: flowCount }).map((_, index) => (
               <path
@@ -191,11 +296,11 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
             <text x="382" y="45" fill={heatColor(convection?.fluidC ?? 20)} fontSize="18" fontWeight="700">
               Fluido {formatNumber(convection?.fluidC ?? 0, 1)} °C
             </text>
-            <text x="260" y="206" fill="#bae6fd" fontSize="15" fontWeight="700">
-              v {formatNumber(convectionVelocity, 2)} m/s · h {formatNumber(convectionH, 2)} W/m²·K
+            <text x="240" y="206" fill="#bae6fd" fontSize="14" fontWeight="700">
+              v {formatNumber(convectionVelocity, 2)} m/s · Qv {formatNumber(convection?.flowRate ?? 0, 3)} m³/s
             </text>
             <text x="88" y="206" fill="#ddd6fe" fontSize="14" fontWeight="700">
-              {convection?.regime ?? 'Régimen'}
+              {convection?.regime ?? 'Régimen'} · h {formatNumber(convectionH, 1)}
             </text>
           </>
         )}
@@ -234,7 +339,7 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
               ε {formatNumber(epsilon, 3)}
             </text>
             <text x="350" y="42" fill="#ddd6fe" fontSize="16" fontWeight="700">
-              Q {formatNumber(radiation?.q ?? 0, 1)} W
+              Qneto {formatNumber(radiation?.q ?? 0, 1)} W
             </text>
             <text x="340" y="214" fill="#bae6fd" fontSize="14" fontWeight="700">
               {formatNumber(radiation?.surfaceC ?? 0, 1)} °C → {formatNumber(radiation?.ambientC ?? 0, 1)} °C
