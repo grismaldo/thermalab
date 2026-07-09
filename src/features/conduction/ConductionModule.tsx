@@ -1,26 +1,41 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Layers, Save } from 'lucide-react';
+import { Box, Circle, Cylinder, Layers, Save } from 'lucide-react';
 import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart';
 import { TemperatureProfileChart } from '../../components/charts/TemperatureProfileChart';
 import { ThermalDiagram } from '../../components/charts/ThermalDiagram';
-import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { ExportButton } from '../../components/ui/ExportButton';
 import { FormulaDisplay } from '../../components/ui/FormulaDisplay';
+import { ModuleShell } from '../../components/ui/ModuleShell';
+import { PrintReportButton } from '../../components/ui/PrintReportButton';
 import { ResultCard } from '../../components/ui/ResultCard';
 import { SliderInput } from '../../components/ui/SliderInput';
 import {
+  calculateCylinderConduction,
   calculateFlatConduction,
   calculateMultilayerConduction,
+  calculateSphereConduction,
   formatNumber,
   validateCelsius,
   validatePositive,
+  validateRadii,
+  type ConductionGeometry,
   type Layer,
 } from '../../lib/calculations';
 import { getMaterial, MATERIALS } from '../../lib/materials';
-import type { NewSimulation, SavedSimulation, SimulationValue } from '../../types';
+import {
+  INPUT_ERROR,
+  INVALID,
+  inputClass,
+  numberFrom,
+  selectClass,
+  stringFrom,
+} from '../../lib/moduleHelpers';
+import type { NewSimulation, SavedSimulation } from '../../types';
+import { CYLINDER_PRACTICE } from './PracticeCylinder';
 import { FLAT_PRACTICE } from './PracticeFlat';
 import { MULTILAYER_PRACTICE } from './PracticeMultilayer';
+import { SPHERE_PRACTICE } from './PracticeSphere';
 
 interface ConductionModuleProps {
   loadedSimulation: SavedSimulation | null;
@@ -28,21 +43,15 @@ interface ConductionModuleProps {
   onSave: (simulation: NewSimulation) => void;
 }
 
-type Mode = 'flat' | 'multilayer';
-
-const INVALID = '—';
-const INPUT_ERROR = 'Revisa los valores ingresados.';
+type Mode = 'flat' | 'multilayer' | 'cylinder' | 'sphere';
 
 const comparisonIds = ['copper', 'brick', 'fiberglass', 'polyurethane'];
 
-const selectClass =
-  'h-11 w-full rounded-lg border border-slate-700/80 bg-slate-950/70 px-3 text-sm font-semibold text-slate-100 transition focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30';
-
-const numberFrom = (value: SimulationValue | undefined, fallback: number): number =>
-  typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-
-const stringFrom = (value: SimulationValue | undefined, fallback: string): string =>
-  typeof value === 'string' ? value : fallback;
+const modeToGeometry = (mode: Mode): ConductionGeometry => {
+  if (mode === 'cylinder') return 'cylinder';
+  if (mode === 'sphere') return 'sphere';
+  return 'flat';
+};
 
 export function ConductionModule({ loadedSimulation, onLoaded, onSave }: ConductionModuleProps) {
   const [mode, setMode] = useState<Mode>('flat');
@@ -53,12 +62,15 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
   const [area, setArea] = useState(FLAT_PRACTICE.area);
   const [hotC, setHotC] = useState(FLAT_PRACTICE.hotC);
   const [coldC, setColdC] = useState(FLAT_PRACTICE.coldC);
+  const [innerRadius, setInnerRadius] = useState(CYLINDER_PRACTICE.innerRadius);
+  const [outerRadius, setOuterRadius] = useState(CYLINDER_PRACTICE.outerRadius);
+  const [axialLength, setAxialLength] = useState(CYLINDER_PRACTICE.length);
   const [layers, setLayers] = useState<Layer[]>(MULTILAYER_PRACTICE.layers);
 
   useEffect(() => {
     if (loadedSimulation?.module !== 'conduction') return;
-    const loadedMode = stringFrom(loadedSimulation.parameters.mode, 'flat') === 'multilayer' ? 'multilayer' : 'flat';
-    setMode(loadedMode);
+    const loadedMode = stringFrom(loadedSimulation.parameters.mode, 'flat') as Mode;
+    setMode(['flat', 'multilayer', 'cylinder', 'sphere'].includes(loadedMode) ? loadedMode : 'flat');
     setPractice(loadedSimulation.practice);
     setSimulationName(loadedSimulation.name);
     setMaterialId(stringFrom(loadedSimulation.parameters.materialId, FLAT_PRACTICE.materialId));
@@ -66,6 +78,9 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
     setArea(numberFrom(loadedSimulation.parameters.area, FLAT_PRACTICE.area));
     setHotC(numberFrom(loadedSimulation.parameters.hotC, FLAT_PRACTICE.hotC));
     setColdC(numberFrom(loadedSimulation.parameters.coldC, FLAT_PRACTICE.coldC));
+    setInnerRadius(numberFrom(loadedSimulation.parameters.innerRadius, CYLINDER_PRACTICE.innerRadius));
+    setOuterRadius(numberFrom(loadedSimulation.parameters.outerRadius, CYLINDER_PRACTICE.outerRadius));
+    setAxialLength(numberFrom(loadedSimulation.parameters.axialLength, CYLINDER_PRACTICE.length));
     setLayers((current) =>
       current.map((layer, index) => ({
         ...layer,
@@ -77,17 +92,22 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
 
   const material = getMaterial(materialId);
   const errors = [
-    validatePositive('Área', area),
-    validatePositive('Espesor', length),
-    validatePositive('Conductividad', material.k),
     validateCelsius('Temperatura caliente', hotC),
     validateCelsius('Temperatura fría', coldC),
-    ...layers.map((layer) => validatePositive(`Espesor ${layer.name}`, layer.L)),
+    ...(mode === 'flat' || mode === 'multilayer'
+      ? [validatePositive('Área', area), ...(mode === 'flat' ? [validatePositive('Espesor', length), validatePositive('Conductividad', material.k)] : []), ...(mode === 'multilayer' ? layers.map((layer) => validatePositive(`Espesor ${layer.name}`, layer.L)) : [])]
+      : [
+          validatePositive('Conductividad', material.k),
+          validatePositive('Radio interior', innerRadius),
+          validatePositive('Radio exterior', outerRadius),
+          validateRadii(innerRadius, outerRadius),
+          ...(mode === 'cylinder' ? [validatePositive('Longitud axial', axialLength)] : []),
+        ]),
   ].filter((message): message is string => Boolean(message));
 
   const flatResult = useMemo(
-    () => (errors.length === 0 ? calculateFlatConduction(material.k, area, length, hotC, coldC) : null),
-    [area, coldC, errors.length, hotC, length, material.k],
+    () => (errors.length === 0 && mode === 'flat' ? calculateFlatConduction(material.k, area, length, hotC, coldC) : null),
+    [area, coldC, errors.length, hotC, length, material.k, mode],
   );
 
   const referenceQ = useMemo(
@@ -96,23 +116,78 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
   );
 
   const multilayerResult = useMemo(
-    () => (errors.length === 0 ? calculateMultilayerConduction(layers, area, hotC, coldC, referenceQ) : null),
-    [area, coldC, errors.length, hotC, layers, referenceQ],
+    () =>
+      errors.length === 0 && mode === 'multilayer'
+        ? calculateMultilayerConduction(layers, area, hotC, coldC, referenceQ)
+        : null,
+    [area, coldC, errors.length, hotC, layers, mode, referenceQ],
   );
 
-  const activeResult = mode === 'flat' ? flatResult : multilayerResult;
-  const qValue = activeResult?.q ?? 0;
+  const cylinderResult = useMemo(
+    () =>
+      errors.length === 0 && mode === 'cylinder'
+        ? calculateCylinderConduction(material.k, axialLength, innerRadius, outerRadius, hotC, coldC)
+        : null,
+    [axialLength, coldC, errors.length, hotC, innerRadius, material.k, mode, outerRadius],
+  );
+
+  const sphereResult = useMemo(
+    () =>
+      errors.length === 0 && mode === 'sphere'
+        ? calculateSphereConduction(material.k, innerRadius, outerRadius, hotC, coldC)
+        : null,
+    [coldC, errors.length, hotC, innerRadius, material.k, mode, outerRadius],
+  );
+
+  const qValue =
+    mode === 'flat'
+      ? flatResult?.q ?? 0
+      : mode === 'multilayer'
+        ? multilayerResult?.q ?? 0
+        : mode === 'cylinder'
+          ? cylinderResult?.q ?? 0
+          : sphereResult?.q ?? 0;
+
+  const resistanceValue =
+    mode === 'flat'
+      ? flatResult?.resistance ?? 0
+      : mode === 'multilayer'
+        ? multilayerResult?.totalResistance ?? 0
+        : mode === 'cylinder'
+          ? cylinderResult?.resistance ?? 0
+          : sphereResult?.resistance ?? 0;
+
+  const profile =
+    mode === 'flat'
+      ? flatResult?.profile ?? []
+      : mode === 'multilayer'
+        ? multilayerResult?.profile ?? []
+        : mode === 'cylinder'
+          ? cylinderResult?.profile ?? []
+          : sphereResult?.profile ?? [];
 
   const comparisonData = useMemo(() => {
     if (errors.length > 0) return [];
     return comparisonIds.map((id) => {
       const item = getMaterial(id);
+      if (mode === 'cylinder') {
+        return {
+          label: item.name,
+          q: calculateCylinderConduction(item.k, axialLength, innerRadius, outerRadius, hotC, coldC).q,
+        };
+      }
+      if (mode === 'sphere') {
+        return {
+          label: item.name,
+          q: calculateSphereConduction(item.k, innerRadius, outerRadius, hotC, coldC).q,
+        };
+      }
       return {
         label: item.name,
         q: calculateFlatConduction(item.k, area, length, hotC, coldC).q,
       };
     });
-  }, [area, coldC, errors.length, hotC, length]);
+  }, [area, axialLength, coldC, errors.length, hotC, innerRadius, length, mode, outerRadius]);
 
   const loadFlatPractice = () => {
     setMode('flat');
@@ -135,13 +210,36 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
     setLayers(MULTILAYER_PRACTICE.layers);
   };
 
+  const loadCylinderPractice = () => {
+    setMode('cylinder');
+    setPractice(CYLINDER_PRACTICE.name);
+    setSimulationName('Conducción — cilindro hueco');
+    setMaterialId(CYLINDER_PRACTICE.materialId);
+    setAxialLength(CYLINDER_PRACTICE.length);
+    setInnerRadius(CYLINDER_PRACTICE.innerRadius);
+    setOuterRadius(CYLINDER_PRACTICE.outerRadius);
+    setHotC(CYLINDER_PRACTICE.hotC);
+    setColdC(CYLINDER_PRACTICE.coldC);
+  };
+
+  const loadSpherePractice = () => {
+    setMode('sphere');
+    setPractice(SPHERE_PRACTICE.name);
+    setSimulationName('Conducción — esfera hueca');
+    setMaterialId(SPHERE_PRACTICE.materialId);
+    setInnerRadius(SPHERE_PRACTICE.innerRadius);
+    setOuterRadius(SPHERE_PRACTICE.outerRadius);
+    setHotC(SPHERE_PRACTICE.hotC);
+    setColdC(SPHERE_PRACTICE.coldC);
+  };
+
   const updateLayerLength = (index: number, value: number) => {
     setLayers((current) => current.map((layer, layerIndex) => (layerIndex === index ? { ...layer, L: value } : layer)));
   };
 
   const exportData = {
     name: simulationName,
-    module: 'conduction',
+    module: 'conduction' as const,
     practice,
     parameters: {
       mode,
@@ -151,16 +249,56 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
       area,
       hotC,
       coldC,
+      innerRadius,
+      outerRadius,
+      axialLength,
       layer1L: layers[0]?.L ?? null,
       layer2L: layers[1]?.L ?? null,
       layer3L: layers[2]?.L ?? null,
     },
     results: {
       q: qValue,
-      resistance: mode === 'flat' ? flatResult?.resistance ?? null : multilayerResult?.totalResistance ?? null,
+      resistance: resistanceValue,
       efficiency: mode === 'multilayer' ? multilayerResult?.efficiency ?? null : null,
+      heatFlux:
+        mode === 'flat'
+          ? flatResult?.heatFlux ?? null
+          : mode === 'cylinder'
+            ? cylinderResult?.heatFlux ?? null
+            : mode === 'sphere'
+              ? sphereResult?.heatFlux ?? null
+              : null,
     },
   };
+
+  const formulaBlock =
+    mode === 'flat'
+      ? {
+          title: 'Pared plana simple',
+          formula: 'Q = (k · A · (T_caliente − T_fría)) / L',
+          substituted: `Q = (${formatNumber(material.k)} · ${formatNumber(area)} · (${formatNumber(hotC)} − ${formatNumber(coldC)})) / ${formatNumber(length)} = ${errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`}`,
+          note: 'Con los valores de la práctica 1, la fórmula produce 432 W.',
+        }
+      : mode === 'multilayer'
+        ? {
+            title: 'Pared multicapa',
+            formula: 'R_total = Σ(L_i / (k_i · A)); Q = (T_caliente − T_fría) / R_total',
+            substituted: `R_total = ${formatNumber(resistanceValue, 4)} K/W; Q = ${errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`}`,
+            note: 'Las capas en serie suman sus resistencias térmicas.',
+          }
+        : mode === 'cylinder'
+          ? {
+              title: 'Cilindro hueco',
+              formula: 'R = ln(r_o / r_i) / (2 π k L); Q = ΔT / R',
+              substituted: `R = ln(${formatNumber(outerRadius)} / ${formatNumber(innerRadius)}) / (2π · ${formatNumber(material.k)} · ${formatNumber(axialLength)}) = ${formatNumber(resistanceValue, 5)} K/W; Q = ${errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`}`,
+              note: 'La resistencia crece con el logaritmo del cociente de radios.',
+            }
+          : {
+              title: 'Esfera hueca',
+              formula: 'R = (1/r_i − 1/r_o) / (4 π k); Q = ΔT / R',
+              substituted: `R = (1/${formatNumber(innerRadius)} − 1/${formatNumber(outerRadius)}) / (4π · ${formatNumber(material.k)}) = ${formatNumber(resistanceValue, 5)} K/W; Q = ${errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`}`,
+              note: 'En esferas la resistencia depende solo de los radios y de k.',
+            };
 
   const saveActiveSimulation = () => {
     onSave({
@@ -172,100 +310,79 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
     });
   };
 
-  return (
-    <div className="animate-fade-in-up space-y-5">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div>
-          <Badge tone="warm">Ley de Fourier</Badge>
-          <h2 className="mt-3 text-2xl font-black text-slate-50">Módulo de conducción</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-            Estudia cómo el calor viaja a través de paredes, cuánto frena cada material y el efecto del aislamiento.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={loadFlatPractice}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-orange-300/40 bg-orange-400/12 px-3 py-2 text-sm font-semibold text-orange-100 transition hover:bg-orange-400/20 active:scale-[0.98]"
-          >
-            <Box size={16} aria-hidden="true" />
-            Práctica 1
-          </button>
-          <button
-            type="button"
-            onClick={loadMultilayerPractice}
-            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-cyan-300/40 bg-cyan-400/12 px-3 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20 active:scale-[0.98]"
-          >
-            <Layers size={16} aria-hidden="true" />
-            Práctica 2
-          </button>
-        </div>
-      </div>
+  const modeButtons: Array<{ id: Mode; label: string }> = [
+    { id: 'flat', label: 'Plana' },
+    { id: 'multilayer', label: 'Multicapa' },
+    { id: 'cylinder', label: 'Cilindro' },
+    { id: 'sphere', label: 'Esfera' },
+  ];
 
+  return (
+    <ModuleShell
+      badge="Ley de Fourier"
+      badgeTone="warm"
+      title="Módulo de conducción"
+      description="Pared plana, multicapa, cilindro y esfera: resistencias térmicas, perfiles de temperatura y comparación de materiales."
+      practices={[
+        { label: 'Práctica 1', onClick: loadFlatPractice, icon: <Box size={16} aria-hidden="true" />, tone: 'warm' },
+        { label: 'Práctica 2', onClick: loadMultilayerPractice, icon: <Layers size={16} aria-hidden="true" />, tone: 'cold' },
+        { label: 'Cilindro', onClick: loadCylinderPractice, icon: <Cylinder size={16} aria-hidden="true" />, tone: 'warm' },
+        { label: 'Esfera', onClick: loadSpherePractice, icon: <Circle size={16} aria-hidden="true" />, tone: 'rad' },
+      ]}
+    >
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card title="Variables de entrada" subtitle={practice}>
           <div className="space-y-4">
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">
-                Nombre de la simulación
-              </span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">Nombre de la simulación</span>
               <input
-                className="h-11 w-full rounded-lg border border-slate-700/80 bg-slate-950/70 px-3 text-sm text-slate-100 transition focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/30"
+                className={inputClass}
                 value={simulationName}
                 onChange={(event) => setSimulationName(event.target.value)}
               />
             </label>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setMode('flat')}
-                className={`min-h-10 rounded-lg px-3 text-sm font-bold transition ${
-                  mode === 'flat'
-                    ? 'bg-orange-400/20 text-orange-100 ring-1 ring-orange-300/50'
-                    : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Pared simple
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('multilayer')}
-                className={`min-h-10 rounded-lg px-3 text-sm font-bold transition ${
-                  mode === 'multilayer'
-                    ? 'bg-cyan-400/20 text-cyan-100 ring-1 ring-cyan-300/50'
-                    : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                Multicapa
-              </button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {modeButtons.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setMode(item.id)}
+                  className={`min-h-10 rounded-lg px-2 text-xs font-bold transition sm:text-sm ${
+                    mode === item.id
+                      ? 'bg-orange-400/20 text-orange-100 ring-1 ring-orange-300/50'
+                      : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
 
+            {(mode === 'flat' || mode === 'cylinder' || mode === 'sphere') && (
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold text-slate-200">Material</span>
+                <select className={selectClass} value={materialId} onChange={(event) => setMaterialId(event.target.value)}>
+                  {MATERIALS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name} — k={item.k} W/m·K
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {mode === 'flat' && (
-              <>
-                <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-slate-200">
-                    Material
-                  </span>
-                  <select className={selectClass} value={materialId} onChange={(event) => setMaterialId(event.target.value)}>
-                    {MATERIALS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name} — k={item.k} W/m·K
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <SliderInput
-                  label="Espesor (L)"
-                  value={length}
-                  min={0.005}
-                  max={1}
-                  step={0.005}
-                  unit="m"
-                  onChange={setLength}
-                  error={validatePositive('Espesor', length)}
-                />
-              </>
+              <SliderInput
+                label="Espesor (L)"
+                value={length}
+                min={0.005}
+                max={1}
+                step={0.005}
+                unit="m"
+                onChange={setLength}
+                error={validatePositive('Espesor', length)}
+              />
             )}
 
             {mode === 'multilayer' && (
@@ -287,16 +404,57 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
               </div>
             )}
 
-            <SliderInput
-              label="Área (A)"
-              value={area}
-              min={0.01}
-              max={30}
-              step={0.01}
-              unit="m²"
-              onChange={setArea}
-              error={validatePositive('Área', area)}
-            />
+            {(mode === 'cylinder' || mode === 'sphere') && (
+              <>
+                <SliderInput
+                  label="Radio interior (rᵢ)"
+                  value={innerRadius}
+                  min={0.005}
+                  max={0.5}
+                  step={0.001}
+                  unit="m"
+                  onChange={setInnerRadius}
+                  error={validatePositive('Radio interior', innerRadius) ?? validateRadii(innerRadius, outerRadius)}
+                />
+                <SliderInput
+                  label="Radio exterior (rₒ)"
+                  value={outerRadius}
+                  min={0.01}
+                  max={0.8}
+                  step={0.001}
+                  unit="m"
+                  onChange={setOuterRadius}
+                  error={validatePositive('Radio exterior', outerRadius) ?? validateRadii(innerRadius, outerRadius)}
+                />
+              </>
+            )}
+
+            {mode === 'cylinder' && (
+              <SliderInput
+                label="Longitud axial (L)"
+                value={axialLength}
+                min={0.1}
+                max={10}
+                step={0.05}
+                unit="m"
+                onChange={setAxialLength}
+                error={validatePositive('Longitud axial', axialLength)}
+              />
+            )}
+
+            {(mode === 'flat' || mode === 'multilayer') && (
+              <SliderInput
+                label="Área (A)"
+                value={area}
+                min={0.01}
+                max={30}
+                step={0.01}
+                unit="m²"
+                onChange={setArea}
+                error={validatePositive('Área', area)}
+              />
+            )}
+
             <SliderInput
               label="Temperatura caliente"
               value={hotC}
@@ -329,6 +487,16 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
                 Guardar
               </button>
               <ExportButton filename="thermalab-conduccion.json" data={exportData} />
+              <PrintReportButton
+                title={simulationName}
+                module="Conducción"
+                practice={practice}
+                parameters={exportData.parameters}
+                results={exportData.results}
+                formula={formulaBlock.formula}
+                substituted={formulaBlock.substituted}
+                interpretation={formulaBlock.note}
+              />
             </div>
           </div>
         </Card>
@@ -340,7 +508,17 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
               hotC,
               coldC,
               q: errors.length ? 0 : qValue,
-              length: mode === 'flat' ? length : layers.reduce((total, layer) => total + layer.L, 0),
+              length:
+                mode === 'flat'
+                  ? length
+                  : mode === 'multilayer'
+                    ? layers.reduce((total, layer) => total + layer.L, 0)
+                    : mode === 'cylinder'
+                      ? axialLength
+                      : outerRadius - innerRadius,
+              geometry: modeToGeometry(mode),
+              innerRadius,
+              outerRadius,
               layers: mode === 'multilayer' ? layers : undefined,
             }}
           />
@@ -358,11 +536,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
             />
             <ResultCard
               label="Resistencia térmica (R)"
-              value={
-                errors.length
-                  ? INVALID
-                  : formatNumber(mode === 'flat' ? flatResult?.resistance ?? 0 : multilayerResult?.totalResistance ?? 0, 4)
-              }
+              value={errors.length ? INVALID : formatNumber(resistanceValue, 5)}
               unit={errors.length ? undefined : 'K/W'}
               tone="cold"
               interpretation="Si la pared frena más el calor, se transfiere menos con la misma diferencia de temperatura."
@@ -381,11 +555,14 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Card title="Perfil de temperatura" subtitle="Temperatura a lo largo de la pared">
+        <Card
+          title="Perfil de temperatura"
+          subtitle={mode === 'cylinder' || mode === 'sphere' ? 'Temperatura vs radio' : 'Temperatura a lo largo de la pared'}
+        >
           <TemperatureProfileChart
-            data={(mode === 'flat' ? flatResult?.profile : multilayerResult?.profile) ?? []}
+            data={profile}
             series={[{ dataKey: 'temperatura', name: 'Temperatura', color: '#f97316' }]}
-            xLabel="Posición x (m)"
+            xLabel={mode === 'cylinder' || mode === 'sphere' ? 'Radio r (m)' : 'Posición x (m)'}
             yLabel="Temperatura (°C)"
           />
         </Card>
@@ -394,29 +571,14 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
         </Card>
       </div>
 
-      <Card title="Fórmula activa" subtitle={mode === 'flat' ? FLAT_PRACTICE.objective : MULTILAYER_PRACTICE.objective}>
-        {mode === 'flat' ? (
-          <FormulaDisplay
-            title="Pared plana simple"
-            formula="Q = (k * A * (T_caliente - T_fria)) / L"
-            substituted={`Q = (${formatNumber(material.k)} * ${formatNumber(area)} * (${formatNumber(hotC)} - ${formatNumber(
-              coldC,
-            )})) / ${formatNumber(length)} = ${errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`}`}
-            note="Con los valores de la práctica 1, la fórmula produce 432 W. Un resultado de 43,2 W requeriría A=1 m² o una diferencia de temperatura diez veces menor."
-          />
-        ) : (
-          <FormulaDisplay
-            title="Pared multicapa"
-            formula="R_total = suma(L_i / (k_i * A)); Q = (T_caliente - T_fria) / R_total"
-            substituted={`R_total = ${formatNumber(multilayerResult?.totalResistance ?? 0, 4)} K/W; Q = (${formatNumber(
-              hotC,
-            )} - ${formatNumber(coldC)}) / R_total = ${
-              errors.length ? 'valores no válidos' : `${formatNumber(qValue, 2)} W`
-            }`}
-            note="Las capas están en serie, por eso las resistencias térmicas se suman."
-          />
-        )}
+      <Card title="Fórmula activa" subtitle={formulaBlock.note}>
+        <FormulaDisplay
+          title={formulaBlock.title}
+          formula={formulaBlock.formula}
+          substituted={formulaBlock.substituted}
+          note={formulaBlock.note}
+        />
       </Card>
-    </div>
+    </ModuleShell>
   );
 }

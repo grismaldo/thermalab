@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRight,
   BarChart3,
@@ -7,6 +8,10 @@ import {
   Flame,
   FolderOpen,
   History,
+  Layers3,
+  Play,
+  Save,
+  SlidersHorizontal,
   Trash2,
   Waves,
   ThermometerSun,
@@ -45,8 +50,15 @@ const formatDate = (iso: string): string =>
 
 function Dashboard({
   onNavigate,
+  stats,
 }: {
   onNavigate: (view: ViewId) => void;
+  stats: {
+    total: number;
+    completedPractices: number;
+    activeModules: number;
+    lastModule: Mechanism | null;
+  };
 }) {
   const cards = [
     {
@@ -54,49 +66,117 @@ function Dashboard({
       title: 'Conducción',
       icon: Flame,
       tone: 'warm' as const,
-      copy: 'Pared simple, capas apiladas y cuánto frena el calor cada material.',
+      copy: 'Pared plana, multicapa, cilindro y esfera. Resistencias y perfiles térmicos.',
     },
     {
       id: 'convection' as const,
       title: 'Convección',
       icon: Waves,
       tone: 'cold' as const,
-      copy: 'Intercambio de calor entre una placa y el aire o fluido, natural y forzada.',
+      copy: 'Placa o cilindro, caudal, Re/Nu/Pr y comparación natural vs forzada.',
     },
     {
       id: 'radiation' as const,
       title: 'Radiación',
       icon: ThermometerSun,
       tone: 'rad' as const,
-      copy: 'Calor emitido por radiación: cuerpo negro, superficies reales y emisividad.',
+      copy: 'Cuerpo negro, superficies grises y balance emitido–absorbido–neto.',
+    },
+  ];
+
+  const steps = [
+    {
+      icon: SlidersHorizontal,
+      title: 'Ajusta variables',
+      copy: 'Materiales, fluidos, geometría y temperaturas en tiempo real.',
+    },
+    {
+      icon: Play,
+      title: 'Observa resultados',
+      copy: 'Diagramas, fórmulas sustituidas y gráficos científicos al instante.',
+    },
+    {
+      icon: Save,
+      title: 'Guarda e informa',
+      copy: 'Historial local, export JSON e informe imprimible para la entrega.',
     },
   ];
 
   return (
-    <div className="animate-fade-in-up space-y-5">
-      <section className="overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/72 p-5 backdrop-blur-sm md:p-6">
-        <div className="thermal-strip mb-5 h-2 rounded-full" />
-        <Badge tone="neutral">Laboratorio virtual</Badge>
-        <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_320px] lg:items-end">
-          <div>
-            <h2 className="text-3xl font-black tracking-tight text-slate-50 md:text-4xl">
-              Explora la transferencia de calor en tiempo real
-            </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-relaxed text-slate-400">
-              Conducción, convección y radiación en un solo panel. Ajusta valores, ve fórmulas con datos reales,
-              gráficos al instante y guarda tus prácticas.
-            </p>
+    <div className="space-y-5">
+      <section className="lab-panel relative overflow-hidden rounded-2xl p-5 md:p-7">
+        <div className="thermal-strip mb-5 h-1.5 rounded-full" />
+        <div className="absolute -right-16 -top-16 size-56 rounded-full bg-cyan-400/10 blur-3xl" />
+        <div className="absolute -bottom-20 left-1/3 size-48 rounded-full bg-orange-400/10 blur-3xl" />
+        <div className="relative">
+          <Badge tone="neutral">Laboratorio virtual · UTM</Badge>
+          <h2 className="mt-4 max-w-3xl text-4xl font-black tracking-tight text-slate-50 md:text-5xl">
+            ThermaLab
+          </h2>
+          <p className="mt-2 text-lg font-semibold text-cyan-100/90 md:text-xl">
+            Consola de transferencia de calor
+          </p>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-400 md:text-base">
+            Conducción, convección y radiación con física verificable, diagramas animados y prácticas listas
+            para demostrar en clase.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigate(stats.lastModule ?? 'conduction')}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-cyan-300 active:scale-[0.98]"
+            >
+              <BarChart3 size={18} aria-hidden="true" />
+              {stats.total > 0 ? 'Continuar práctica' : 'Iniciar práctica'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('history')}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-slate-600/70 bg-slate-900/70 px-5 py-3 text-sm font-bold text-slate-100 transition hover:border-slate-500 hover:bg-slate-800/80 active:scale-[0.98]"
+            >
+              <History size={18} aria-hidden="true" />
+              Ver historial
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('conduction')}
-            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-cyan-400 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(56,189,248,0.25)] transition hover:bg-cyan-300 hover:shadow-[0_0_32px_rgba(56,189,248,0.35)] active:scale-[0.98]"
-          >
-            <BarChart3 size={18} aria-hidden="true" />
-            Iniciar práctica
-          </button>
         </div>
       </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[
+          { label: 'Simulaciones', value: stats.total, icon: Layers3 },
+          { label: 'Prácticas distintas', value: stats.completedPractices, icon: Play },
+          { label: 'Módulos usados', value: `${stats.activeModules}/3`, icon: Flame },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="lab-panel rounded-xl px-4 py-4">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{item.label}</p>
+                <Icon size={16} className="text-slate-500" aria-hidden="true" />
+              </div>
+              <p className="font-mono-num mt-2 text-2xl font-bold text-slate-50">{item.value}</p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {steps.map((step, index) => {
+          const Icon = step.icon;
+          return (
+            <div key={step.title} className="lab-panel rounded-xl p-4">
+              <div className="flex items-center gap-3">
+                <span className="font-mono-num grid size-8 place-items-center rounded-lg bg-slate-900 text-xs font-bold text-cyan-200">
+                  {index + 1}
+                </span>
+                <Icon size={18} className="text-slate-400" aria-hidden="true" />
+              </div>
+              <h3 className="mt-3 text-sm font-bold text-slate-100">{step.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-slate-400">{step.copy}</p>
+            </div>
+          );
+        })}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {cards.map((card) => {
@@ -106,7 +186,7 @@ function Dashboard({
               key={card.id}
               type="button"
               onClick={() => onNavigate(card.id)}
-              className="group rounded-xl border border-slate-800/80 bg-slate-950/72 p-5 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/40 hover:bg-slate-900/90 hover:shadow-glow active:scale-[0.99]"
+              className="group lab-panel rounded-xl p-5 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/35 hover:shadow-glow active:scale-[0.99]"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="grid size-11 place-items-center rounded-xl border border-slate-700/80 bg-slate-900 transition group-hover:border-cyan-300/30">
@@ -138,7 +218,7 @@ function Dashboard({
             </p>
           </div>
           <p className="max-w-sm text-sm leading-relaxed text-slate-400">
-            ThermaLab — herramienta educativa para visualizar mecanismos térmicos sin hojas de cálculo.
+            ThermaLab — instrumento educativo para visualizar mecanismos térmicos sin hojas de cálculo.
           </p>
         </div>
       </Card>
@@ -171,7 +251,7 @@ function HistoryView({
   }
 
   return (
-    <div className="animate-fade-in-up space-y-4">
+    <div className="space-y-4">
       <div>
         <Badge tone="neutral">Prácticas guardadas</Badge>
         <h2 className="mt-3 text-2xl font-black text-slate-50">Historial de prácticas</h2>
@@ -183,7 +263,7 @@ function HistoryView({
         {simulations.map((simulation) => (
           <article
             key={simulation.id}
-            className="rounded-xl border border-slate-800/80 bg-slate-950/72 p-4 transition hover:border-slate-700"
+            className="lab-panel rounded-xl p-4 transition hover:border-slate-600"
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
@@ -200,7 +280,7 @@ function HistoryView({
                   aria-label="Nombre de la simulación"
                 />
                 <p className="mt-2 text-sm text-slate-400">{simulation.practice}</p>
-                <div className="mt-3 grid gap-2 font-mono text-xs text-slate-300 md:grid-cols-3">
+                <div className="mt-3 grid gap-2 font-mono-num text-xs text-slate-300 md:grid-cols-3">
                   {Object.entries(simulation.results)
                     .slice(0, 6)
                     .map(([key, value]) => (
@@ -243,6 +323,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const {
     simulations,
+    stats,
     saveSimulation,
     deleteSimulation,
     updateSimulationName,
@@ -289,13 +370,14 @@ export default function App() {
         />
       );
     }
-    return <Dashboard onNavigate={setActiveView} />;
+    return <Dashboard onNavigate={setActiveView} stats={stats} />;
   }, [
     activeView,
     deleteSimulation,
     handleLoaded,
     loadedSimulation,
     simulations,
+    stats,
     updateSimulationName,
   ]);
 
@@ -306,17 +388,29 @@ export default function App() {
         <div
           role="status"
           aria-live="polite"
-          className="animate-fade-in-up fixed right-4 top-24 z-40 flex items-center gap-2 rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-100 shadow-glow backdrop-blur-sm"
+          className="no-print animate-fade-in-up fixed right-4 top-24 z-40 flex items-center gap-2 rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-100 shadow-glow backdrop-blur-sm"
         >
           <CheckCircle2 size={16} aria-hidden="true" />
           {notice}
         </div>
       )}
       <main className="mx-auto max-w-7xl px-4 pb-28 pt-5 md:px-6 md:pb-5">
-        <section className="min-w-0">{content}</section>
+        <AnimatePresence mode="wait">
+          <motion.section
+            key={activeView}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="min-w-0"
+          >
+            {content}
+          </motion.section>
+        </AnimatePresence>
       </main>
+      <div id="thermalab-print-report" className="print-report" aria-hidden="true" />
       <BottomTabBar activeView={activeView} onNavigate={setActiveView} />
-      <footer className="mx-auto max-w-7xl px-4 pb-6 text-xs text-slate-500 md:px-6">
+      <footer className="no-print mx-auto max-w-7xl px-4 pb-6 text-xs text-slate-500 md:px-6">
         <span>ThermaLab — Transferencia de calor</span>
       </footer>
     </div>

@@ -5,6 +5,9 @@ import '@fontsource/rethink-sans/500.css';
 import '@fontsource/rethink-sans/600.css';
 import '@fontsource/rethink-sans/700.css';
 import '@fontsource/rethink-sans/800.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/700.css';
 import App from './App';
 import './index.css';
 

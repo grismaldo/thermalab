@@ -3,6 +3,9 @@ import type { ChartPoint, Fluid } from '../types';
 export const SIGMA = 5.670374419e-8;
 export const ABSOLUTE_ZERO_C = -273.15;
 
+export type ConductionGeometry = 'flat' | 'cylinder' | 'sphere';
+export type ConvectionGeometry = 'plate' | 'cylinder';
+
 export interface Layer {
   name: string;
   k: number;
@@ -23,13 +26,24 @@ export interface MultilayerConductionResult {
   profile: ChartPoint[];
 }
 
+export interface RadialConductionResult {
+  q: number;
+  resistance: number;
+  heatFlux: number;
+  profile: ChartPoint[];
+  geometry: ConductionGeometry;
+}
+
 export interface ForcedConvectionResult {
   q: number;
   re: number;
   nu: number;
   h: number;
+  pr: number;
+  flowRate: number;
   regime: 'Laminar' | 'Transición' | 'Turbulento';
   validity: string;
+  geometry: ConvectionGeometry;
 }
 
 export interface NaturalConvectionResult {
@@ -37,12 +51,16 @@ export interface NaturalConvectionResult {
   ra: number;
   nu: number;
   h: number;
+  pr: number;
   validity: string;
 }
 
 export interface RadiationResult {
   q: number;
   blackbodyPower: number;
+  emittedPower: number;
+  absorbedPower: number;
+  netFlux: number;
 }
 
 export const toKelvin = (temperatureC: number): number => temperatureC + 273.15;
@@ -69,6 +87,9 @@ export const validateCelsius = (label: string, value: number): string | null =>
 
 export const validateEmissivity = (value: number): string | null =>
   value >= 0 && value <= 1 ? null : 'La emisividad debe estar entre 0 y 1.';
+
+export const validateRadii = (innerRadius: number, outerRadius: number): string | null =>
+  outerRadius > innerRadius ? null : 'El radio exterior debe ser mayor que el interior.';
 
 export const calculateFlatConduction = (
   k: number,
@@ -121,11 +142,59 @@ export const calculateMultilayerConduction = (
   return { q, totalResistance, efficiency, profile };
 };
 
+/** Cilindro hueco: R = ln(ro/ri) / (2 π k L), L = longitud axial */
+export const calculateCylinderConduction = (
+  k: number,
+  length: number,
+  innerRadius: number,
+  outerRadius: number,
+  hotC: number,
+  coldC: number,
+): RadialConductionResult => {
+  const resistance = Math.log(outerRadius / innerRadius) / (2 * Math.PI * k * length);
+  const q = (hotC - coldC) / resistance;
+  const meanArea = (2 * Math.PI * length * (outerRadius - innerRadius)) / Math.log(outerRadius / innerRadius);
+  const heatFlux = q / meanArea;
+  const profile = Array.from({ length: 21 }, (_, index) => {
+    const r = innerRadius + ((outerRadius - innerRadius) * index) / 20;
+    const temperature = hotC - (q * Math.log(r / innerRadius)) / (2 * Math.PI * k * length);
+    return { label: r.toFixed(3), temperatura: temperature, x: r };
+  });
+
+  return { q, resistance, heatFlux, profile, geometry: 'cylinder' };
+};
+
+/** Esfera hueca: R = (1/ri - 1/ro) / (4 π k) */
+export const calculateSphereConduction = (
+  k: number,
+  innerRadius: number,
+  outerRadius: number,
+  hotC: number,
+  coldC: number,
+): RadialConductionResult => {
+  const resistance = (1 / innerRadius - 1 / outerRadius) / (4 * Math.PI * k);
+  const q = (hotC - coldC) / resistance;
+  const meanArea = 4 * Math.PI * innerRadius * outerRadius;
+  const heatFlux = q / meanArea;
+  const profile = Array.from({ length: 21 }, (_, index) => {
+    const r = innerRadius + ((outerRadius - innerRadius) * index) / 20;
+    const temperature = hotC - (q * (1 / innerRadius - 1 / r)) / (4 * Math.PI * k);
+    return { label: r.toFixed(3), temperatura: temperature, x: r };
+  });
+
+  return { q, resistance, heatFlux, profile, geometry: 'sphere' };
+};
+
 export const reynoldsRegime = (re: number): ForcedConvectionResult['regime'] => {
   if (re < 5e5) return 'Laminar';
   if (re < 1e7) return 'Transición';
   return 'Turbulento';
 };
+
+export const volumetricFlowRate = (velocity: number, area: number): number => velocity * area;
+
+export const velocityFromFlowRate = (flowRate: number, area: number): number =>
+  area > 0 ? flowRate / area : 0;
 
 export const calculateForcedConvection = (
   fluid: Fluid,
@@ -134,21 +203,38 @@ export const calculateForcedConvection = (
   area: number,
   surfaceC: number,
   fluidC: number,
+  geometry: ConvectionGeometry = 'plate',
 ): ForcedConvectionResult => {
-  const re = (fluid.rho * velocity * length) / fluid.mu;
+  const characteristicLength = geometry === 'cylinder' ? length : length;
+  const re = (fluid.rho * velocity * characteristicLength) / fluid.mu;
   const regime = reynoldsRegime(re);
-  const nu =
-    re < 5e5
-      ? 0.664 * Math.pow(re, 0.5) * Math.pow(fluid.Pr, 1 / 3)
-      : 0.037 * Math.pow(re, 0.8) * Math.pow(fluid.Pr, 1 / 3);
-  const h = (nu * fluid.k) / length;
-  const q = h * area * (surfaceC - fluidC);
-  const validity =
-    regime === 'Laminar'
-      ? 'Correlación laminar válida para Re < 5×10⁵.'
-      : 'Correlación turbulenta usada para comparación; revisa el rango si Re está en transición.';
+  let nu: number;
+  let validity: string;
 
-  return { q, re, nu, h, regime, validity };
+  if (geometry === 'cylinder') {
+    // Churchill–Bernstein approx for cross-flow cylinder (simplified educational form)
+    nu =
+      re < 40
+        ? 0.989 * Math.pow(re, 0.33) * Math.pow(fluid.Pr, 1 / 3)
+        : 0.193 * Math.pow(re, 0.618) * Math.pow(fluid.Pr, 1 / 3);
+    validity =
+      'Correlación de cilindro en flujo cruzado (forma educativa). Revisa el rango experimental si Re es extremo.';
+  } else {
+    nu =
+      re < 5e5
+        ? 0.664 * Math.pow(re, 0.5) * Math.pow(fluid.Pr, 1 / 3)
+        : 0.037 * Math.pow(re, 0.8) * Math.pow(fluid.Pr, 1 / 3);
+    validity =
+      regime === 'Laminar'
+        ? 'Correlación laminar de placa plana válida para Re < 5×10⁵.'
+        : 'Correlación turbulenta de placa plana; revisa el rango si Re está en transición.';
+  }
+
+  const h = (nu * fluid.k) / characteristicLength;
+  const q = h * area * (surfaceC - fluidC);
+  const flowRate = volumetricFlowRate(velocity, area);
+
+  return { q, re, nu, h, pr: fluid.Pr, flowRate, regime, validity, geometry };
 };
 
 export const calculateNaturalConvectionAir = (
@@ -173,7 +259,7 @@ export const calculateNaturalConvectionAir = (
       ? 'Correlación natural válida para 10⁴ < Ra < 10⁹.'
       : 'Ra fuera del rango recomendado (10⁴ a 10⁹); resultado orientativo.';
 
-  return { q, ra, nu, h, validity };
+  return { q, ra, nu, h, pr: air.Pr, validity };
 };
 
 export const generateCoolingProfile = (
@@ -205,8 +291,11 @@ export const calculateRadiation = (
   const surfaceK = toKelvin(surfaceC);
   const ambientK = toKelvin(ambientC);
   const blackbodyPower = SIGMA * Math.pow(surfaceK, 4);
-  const q = epsilon * SIGMA * area * (Math.pow(surfaceK, 4) - Math.pow(ambientK, 4));
-  return { q, blackbodyPower };
+  const emittedPower = epsilon * blackbodyPower;
+  const absorbedPower = epsilon * SIGMA * Math.pow(ambientK, 4);
+  const netFlux = emittedPower - absorbedPower;
+  const q = netFlux * area;
+  return { q, blackbodyPower, emittedPower, absorbedPower, netFlux };
 };
 
 export const generateRadiationTemperatureCurve = (
