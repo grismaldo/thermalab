@@ -2,7 +2,7 @@
 
 Laboratorio virtual de transferencia de calor para explorar conducción, convección y radiación de forma interactiva.
 
-**Desarrollador:** Velazco De la Cruz Byron Esteban
+**Desarrollador:** Grismaldo Bone
 
 Consola educativa con geometrías planas y radiales, caudal volumétrico, balance radiativo, fórmulas sustituidas, diagramas SVG animados, historial local, export JSON e informe imprimible (PDF).
 

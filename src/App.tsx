@@ -34,7 +34,7 @@ const moduleLabel: Record<Mechanism, string> = {
   radiation: 'Radiación',
 };
 
-const developers = 'Velazco De la Cruz Byron Esteban';
+const developers = 'Grismaldo Bone';
 
 const moduleTone: Record<Mechanism, 'warm' | 'cold' | 'rad'> = {
   conduction: 'warm',
@@ -411,7 +411,7 @@ export default function App() {
       <div id="thermalab-print-report" className="print-report" aria-hidden="true" />
       <BottomTabBar activeView={activeView} onNavigate={setActiveView} />
       <footer className="no-print mx-auto max-w-7xl px-4 pb-6 text-xs text-slate-500 md:px-6">
-        <span>ThermaLab — Transferencia de calor</span>
+        <span>ThermaLab — Transferencia de calor · {developers}</span>
       </footer>
     </div>
   );
