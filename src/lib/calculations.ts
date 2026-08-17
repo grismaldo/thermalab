@@ -185,8 +185,18 @@ export const calculateSphereConduction = (
   return { q, resistance, heatFlux, profile, geometry: 'sphere' };
 };
 
-export const reynoldsRegime = (re: number): ForcedConvectionResult['regime'] => {
-  if (re < 5e5) return 'Laminar';
+export const RE_PLATE_TRANSITION = 5e5;
+export const WIEN_DISPLACEMENT_UM_K = 2897.772;
+export const STEEL_SOLID = { k: 16, rho: 7850, cp: 500, thickness: 0.005 } as const;
+export const TYPICAL_AIR_H = 10;
+
+export const reynoldsRegime = (re: number, geometry: ConvectionGeometry = 'plate'): ForcedConvectionResult['regime'] => {
+  if (geometry === 'cylinder') {
+    if (re < 20) return 'Laminar';
+    if (re < 1e4) return 'Transición';
+    return 'Turbulento';
+  }
+  if (re < RE_PLATE_TRANSITION) return 'Laminar';
   if (re < 1e7) return 'Transición';
   return 'Turbulento';
 };
@@ -195,6 +205,25 @@ export const volumetricFlowRate = (velocity: number, area: number): number => ve
 
 export const velocityFromFlowRate = (flowRate: number, area: number): number =>
   area > 0 ? flowRate / area : 0;
+
+/** Churchill–Bernstein para cilindro en flujo cruzado (Re Pr > 0.2). */
+export const churchillBernsteinNu = (re: number, pr: number): number => {
+  const safeRe = Math.max(re, 1e-9);
+  const safePr = Math.max(pr, 1e-9);
+  const numerator = 0.62 * Math.pow(safeRe, 0.5) * Math.pow(safePr, 1 / 3);
+  const denominator = Math.pow(1 + Math.pow(0.4 / safePr, 2 / 3), 0.25);
+  const highRe = Math.pow(1 + Math.pow(safeRe / 282000, 5 / 8), 4 / 5);
+  return 0.3 + (numerator / denominator) * highRe;
+};
+
+/** Placa plana: laminar o capa límite mixta (transición en Re = 5×10⁵). */
+export const plateNusselt = (re: number, pr: number): number => {
+  const pr13 = Math.pow(Math.max(pr, 1e-9), 1 / 3);
+  if (re < RE_PLATE_TRANSITION) {
+    return 0.664 * Math.pow(Math.max(re, 0), 0.5) * pr13;
+  }
+  return (0.037 * Math.pow(re, 0.8) - 871) * pr13;
+};
 
 export const calculateForcedConvection = (
   fluid: Fluid,
@@ -205,32 +234,27 @@ export const calculateForcedConvection = (
   fluidC: number,
   geometry: ConvectionGeometry = 'plate',
 ): ForcedConvectionResult => {
-  const characteristicLength = geometry === 'cylinder' ? length : length;
+  const characteristicLength = length;
   const re = (fluid.rho * velocity * characteristicLength) / fluid.mu;
-  const regime = reynoldsRegime(re);
+  const regime = reynoldsRegime(re, geometry);
   let nu: number;
   let validity: string;
 
   if (geometry === 'cylinder') {
-    // Churchill–Bernstein approx for cross-flow cylinder (simplified educational form)
-    nu =
-      re < 40
-        ? 0.989 * Math.pow(re, 0.33) * Math.pow(fluid.Pr, 1 / 3)
-        : 0.193 * Math.pow(re, 0.618) * Math.pow(fluid.Pr, 1 / 3);
+    nu = churchillBernsteinNu(re, fluid.Pr);
     validity =
-      'Correlación de cilindro en flujo cruzado (forma educativa). Revisa el rango experimental si Re es extremo.';
+      re * fluid.Pr > 0.2
+        ? 'Churchill–Bernstein para cilindro en flujo cruzado (Re·Pr > 0,2).'
+        : 'Re·Pr < 0,2: la correlación de Churchill–Bernstein queda fuera de rango; resultado orientativo.';
   } else {
-    nu =
-      re < 5e5
-        ? 0.664 * Math.pow(re, 0.5) * Math.pow(fluid.Pr, 1 / 3)
-        : 0.037 * Math.pow(re, 0.8) * Math.pow(fluid.Pr, 1 / 3);
+    nu = plateNusselt(re, fluid.Pr);
     validity =
       regime === 'Laminar'
-        ? 'Correlación laminar de placa plana válida para Re < 5×10⁵.'
-        : 'Correlación turbulenta de placa plana; revisa el rango si Re está en transición.';
+        ? 'Capa límite laminar en placa plana (Re < 5×10⁵): Nu = 0,664 Re½ Pr⅓.'
+        : 'Capa límite mixta en placa (transición en 5×10⁵): Nu = (0,037 Re⁰·⁸ − 871) Pr⅓.';
   }
 
-  const h = (nu * fluid.k) / characteristicLength;
+  const h = characteristicLength > 0 ? (nu * fluid.k) / characteristicLength : 0;
   const q = h * area * (surfaceC - fluidC);
   const flowRate = volumetricFlowRate(velocity, area);
 
@@ -269,11 +293,8 @@ export const generateCoolingProfile = (
   area: number,
   durationSeconds = 600,
 ): ChartPoint[] => {
-  const steelDensity = 7850;
-  const steelCp = 500;
-  const thickness = 0.005;
-  const mass = steelDensity * area * thickness;
-  const capacitance = Math.max(mass * steelCp, 1);
+  const mass = STEEL_SOLID.rho * area * STEEL_SOLID.thickness;
+  const capacitance = Math.max(mass * STEEL_SOLID.cp, 1);
 
   return Array.from({ length: 21 }, (_, index) => {
     const time = (durationSeconds * index) / 20;
@@ -281,6 +302,9 @@ export const generateCoolingProfile = (
     return { label: `${Math.round(time)} s`, temperatura: temperature, tiempo: time };
   });
 };
+
+export const coolingBiot = (h: number): number =>
+  biotNumber(h, STEEL_SOLID.thickness / 2, STEEL_SOLID.k);
 
 export const calculateRadiation = (
   epsilon: number,
@@ -333,3 +357,52 @@ export const generateEmissivityCurve = (
       q: calculateRadiation(epsilon, area, surfaceC, ambientC).q,
     };
   });
+
+export const wienPeakWavelengthUm = (temperatureC: number): number => {
+  const kelvin = toKelvin(temperatureC);
+  return kelvin > 0 ? WIEN_DISPLACEMENT_UM_K / kelvin : Number.POSITIVE_INFINITY;
+};
+
+export const linearizedRadiationCoefficient = (
+  epsilon: number,
+  surfaceC: number,
+  ambientC: number,
+): number => {
+  const surfaceK = toKelvin(surfaceC);
+  const ambientK = toKelvin(ambientC);
+  return epsilon * SIGMA * (surfaceK ** 2 + ambientK ** 2) * (surfaceK + ambientK);
+};
+
+export const criticalInsulationRadius = (k: number, h: number): number =>
+  h > 0 ? k / h : Number.POSITIVE_INFINITY;
+
+export const insulationEffect = (
+  outerRadius: number,
+  criticalRadius: number,
+): 'aumenta-perdida' | 'reduce-perdida' | 'critico' => {
+  if (!Number.isFinite(criticalRadius)) return 'reduce-perdida';
+  if (Math.abs(outerRadius - criticalRadius) < 1e-6) return 'critico';
+  return outerRadius < criticalRadius ? 'aumenta-perdida' : 'reduce-perdida';
+};
+
+export const biotNumber = (h: number, characteristicLength: number, solidK: number): number =>
+  solidK > 0 ? (h * characteristicLength) / solidK : Number.POSITIVE_INFINITY;
+
+export const fourierNumber = (alpha: number, time: number, characteristicLength: number): number =>
+  characteristicLength > 0 ? (alpha * time) / characteristicLength ** 2 : 0;
+
+export const overallUFlat = (k: number, length: number, hInner: number, hOuter: number): number => {
+  const resistance = 1 / Math.max(hInner, 1e-12) + length / Math.max(k, 1e-12) + 1 / Math.max(hOuter, 1e-12);
+  return 1 / resistance;
+};
+
+export const heatFlux = (q: number, area: number): number => (area > 0 ? q / area : 0);
+
+export const temperatureGradientWarning = (hotC: number, coldC: number): string | null =>
+  hotC === coldC
+    ? 'Sin diferencia de temperatura no hay flujo de calor.'
+    : hotC < coldC
+      ? 'T_caliente < T_fría: el calor fluye en sentido inverso (Q negativo).'
+      : null;
+
+export const lumpedCapacitanceValid = (bi: number): boolean => bi < 0.1;

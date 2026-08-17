@@ -27,7 +27,7 @@ export function BottomTabBar({ activeView, onNavigate }: BottomTabBarProps) {
             }`}
           >
             <Icon size={20} strokeWidth={active ? 2.6 : 2.2} aria-hidden="true" />
-            <span className="w-full truncate text-center leading-none">{item.label}</span>
+            <span className="w-full truncate text-center leading-none">{item.shortLabel}</span>
           </button>
         );
       })}

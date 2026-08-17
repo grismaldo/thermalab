@@ -4,18 +4,27 @@ import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart';
 import { TemperatureProfileChart } from '../../components/charts/TemperatureProfileChart';
 import { ThermalDiagram } from '../../components/charts/ThermalDiagram';
 import { Card } from '../../components/ui/Card';
+import { CsvExportButton } from '../../components/ui/CsvExportButton';
 import { ExportButton } from '../../components/ui/ExportButton';
 import { FormulaDisplay } from '../../components/ui/FormulaDisplay';
+import { InsightCard } from '../../components/ui/InsightCard';
 import { ModuleShell } from '../../components/ui/ModuleShell';
+import { PracticeBanner } from '../../components/ui/PracticeBanner';
 import { PrintReportButton } from '../../components/ui/PrintReportButton';
 import { ResultCard } from '../../components/ui/ResultCard';
 import { SliderInput } from '../../components/ui/SliderInput';
+import { WarningBanner } from '../../components/ui/WarningBanner';
 import {
   calculateCylinderConduction,
   calculateFlatConduction,
   calculateMultilayerConduction,
   calculateSphereConduction,
+  criticalInsulationRadius,
   formatNumber,
+  insulationEffect,
+  overallUFlat,
+  temperatureGradientWarning,
+  TYPICAL_AIR_H,
   validateCelsius,
   validatePositive,
   validateRadii,
@@ -27,6 +36,7 @@ import {
   INPUT_ERROR,
   INVALID,
   inputClass,
+  kelvinHint,
   numberFrom,
   selectClass,
   stringFrom,
@@ -66,6 +76,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
   const [outerRadius, setOuterRadius] = useState(CYLINDER_PRACTICE.outerRadius);
   const [axialLength, setAxialLength] = useState(CYLINDER_PRACTICE.length);
   const [layers, setLayers] = useState<Layer[]>(MULTILAYER_PRACTICE.layers);
+  const [filmH, setFilmH] = useState(TYPICAL_AIR_H);
 
   useEffect(() => {
     if (loadedSimulation?.module !== 'conduction') return;
@@ -87,6 +98,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
         L: numberFrom(loadedSimulation.parameters[`layer${index + 1}L`], layer.L),
       })),
     );
+    setFilmH(numberFrom(loadedSimulation.parameters.filmH, TYPICAL_AIR_H));
     onLoaded();
   }, [loadedSimulation, onLoaded]);
 
@@ -95,13 +107,20 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
     validateCelsius('Temperatura caliente', hotC),
     validateCelsius('Temperatura fría', coldC),
     ...(mode === 'flat' || mode === 'multilayer'
-      ? [validatePositive('Área', area), ...(mode === 'flat' ? [validatePositive('Espesor', length), validatePositive('Conductividad', material.k)] : []), ...(mode === 'multilayer' ? layers.map((layer) => validatePositive(`Espesor ${layer.name}`, layer.L)) : [])]
+      ? [
+          validatePositive('Área', area),
+          validatePositive('h de película', filmH),
+          ...(mode === 'flat'
+            ? [validatePositive('Espesor', length), validatePositive('Conductividad', material.k)]
+            : []),
+          ...(mode === 'multilayer' ? layers.map((layer) => validatePositive(`Espesor ${layer.name}`, layer.L)) : []),
+        ]
       : [
           validatePositive('Conductividad', material.k),
           validatePositive('Radio interior', innerRadius),
           validatePositive('Radio exterior', outerRadius),
           validateRadii(innerRadius, outerRadius),
-          ...(mode === 'cylinder' ? [validatePositive('Longitud axial', axialLength)] : []),
+          ...(mode === 'cylinder' ? [validatePositive('Longitud axial', axialLength), validatePositive('h exterior', filmH)] : []),
         ]),
   ].filter((message): message is string => Boolean(message));
 
@@ -138,6 +157,22 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
         : null,
     [coldC, errors.length, hotC, innerRadius, material.k, mode, outerRadius],
   );
+
+  const gradientWarning = temperatureGradientWarning(hotC, coldC);
+  const practiceMeta =
+    mode === 'flat'
+      ? FLAT_PRACTICE
+      : mode === 'multilayer'
+        ? MULTILAYER_PRACTICE
+        : mode === 'cylinder'
+          ? CYLINDER_PRACTICE
+          : SPHERE_PRACTICE;
+
+  const wallU =
+    mode === 'flat' && errors.length === 0 ? overallUFlat(material.k, length, filmH, filmH) : null;
+  const rCritical = mode === 'cylinder' ? criticalInsulationRadius(material.k, filmH) : null;
+  const insulationHint =
+    rCritical !== null ? insulationEffect(outerRadius, rCritical) : null;
 
   const qValue =
     mode === 'flat'
@@ -255,6 +290,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
       layer1L: layers[0]?.L ?? null,
       layer2L: layers[1]?.L ?? null,
       layer3L: layers[2]?.L ?? null,
+      filmH,
     },
     results: {
       q: qValue,
@@ -268,6 +304,8 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
             : mode === 'sphere'
               ? sphereResult?.heatFlux ?? null
               : null,
+      overallU: wallU,
+      rCritical,
     },
   };
 
@@ -330,6 +368,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
         { label: 'Esfera', onClick: loadSpherePractice, icon: <Circle size={16} aria-hidden="true" />, tone: 'rad' },
       ]}
     >
+      <PracticeBanner name={practiceMeta.name} objective={practiceMeta.objective} />
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card title="Variables de entrada" subtitle={practice}>
           <div className="space-y-4">
@@ -430,15 +469,42 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
             )}
 
             {mode === 'cylinder' && (
+              <>
+                <SliderInput
+                  label="Longitud axial (L)"
+                  value={axialLength}
+                  min={0.1}
+                  max={10}
+                  step={0.05}
+                  unit="m"
+                  onChange={setAxialLength}
+                  error={validatePositive('Longitud axial', axialLength)}
+                />
+                <SliderInput
+                  label="h exterior (aire)"
+                  value={filmH}
+                  min={1}
+                  max={100}
+                  step={0.5}
+                  unit="W/m²·K"
+                  onChange={setFilmH}
+                  error={validatePositive('h exterior', filmH)}
+                  hint="Para el radio crítico r_cr = k / h"
+                />
+              </>
+            )}
+
+            {(mode === 'flat' || mode === 'multilayer') && (
               <SliderInput
-                label="Longitud axial (L)"
-                value={axialLength}
-                min={0.1}
-                max={10}
-                step={0.05}
-                unit="m"
-                onChange={setAxialLength}
-                error={validatePositive('Longitud axial', axialLength)}
+                label="h de película (ambos lados)"
+                value={filmH}
+                min={1}
+                max={100}
+                step={0.5}
+                unit="W/m²·K"
+                onChange={setFilmH}
+                error={validatePositive('h de película', filmH)}
+                hint="Para el coeficiente global U con convección"
               />
             )}
 
@@ -464,6 +530,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
               unit="°C"
               onChange={setHotC}
               error={validateCelsius('Temperatura caliente', hotC)}
+              hint={kelvinHint(hotC)}
             />
             <SliderInput
               label="Temperatura fría"
@@ -474,6 +541,7 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
               unit="°C"
               onChange={setColdC}
               error={validateCelsius('Temperatura fría', coldC)}
+              hint={kelvinHint(coldC)}
             />
 
             <div className="flex flex-wrap gap-2 pt-2">
@@ -487,6 +555,10 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
                 Guardar
               </button>
               <ExportButton filename="thermalab-conduccion.json" data={exportData} />
+              <CsvExportButton
+                filename="thermalab-conduccion.csv"
+                records={[{ ...exportData.parameters, ...exportData.results, name: simulationName, practice }]}
+              />
               <PrintReportButton
                 title={simulationName}
                 module="Conducción"
@@ -501,7 +573,8 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+          <WarningBanner message={gradientWarning} />
           <ThermalDiagram
             type="conduction"
             conduction={{
@@ -551,6 +624,28 @@ export function ConductionModule({ loadedSimulation, onLoaded, onSave }: Conduct
               />
             )}
           </div>
+          {mode === 'flat' && wallU !== null && (
+            <InsightCard
+              title="Coeficiente global U"
+              value={formatNumber(wallU, 3)}
+              unit="W/m²·K"
+              note={`Pared + convección a ambos lados (h = ${formatNumber(filmH, 1)}). Q_U = U·A·ΔT = ${formatNumber(wallU * area * (hotC - coldC), 2)} W.`}
+            />
+          )}
+          {mode === 'cylinder' && rCritical !== null && (
+            <InsightCard
+              title="Radio crítico de aislamiento"
+              value={formatNumber(rCritical, 4)}
+              unit="m"
+              note={
+                insulationHint === 'aumenta-perdida'
+                  ? `r_o < r_cr: añadir aislante todavía aumenta la pérdida (más área).`
+                  : insulationHint === 'critico'
+                    ? 'Estás en el radio crítico: la pérdida es máxima.'
+                    : 'r_o > r_cr: el aislamiento ya reduce la pérdida de calor.'
+              }
+            />
+          )}
         </div>
       </div>
 

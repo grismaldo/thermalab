@@ -14,3 +14,6 @@ export const stringFrom = (value: SimulationValue | undefined, fallback: string)
 
 export const INVALID = '—';
 export const INPUT_ERROR = 'Revisa los valores ingresados.';
+
+export const kelvinHint = (celsius: number): string =>
+  Number.isFinite(celsius) ? `${(celsius + 273.15).toFixed(2)} K` : '';

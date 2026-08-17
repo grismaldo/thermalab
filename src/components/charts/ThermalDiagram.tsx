@@ -127,7 +127,7 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
             <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.75" />
           </radialGradient>
           <marker id={`arrow-${type}`} markerHeight="8" markerWidth="8" orient="auto" refX="7" refY="4">
-            <path d="M0,0 L8,4 L0,8 Z" fill={type === 'radiation' ? '#a78bfa' : '#f97316'} />
+            <path d="M0,0 L8,4 L0,8 Z" fill={type === 'radiation' ? '#e879f9' : '#f97316'} />
           </marker>
         </defs>
 
@@ -283,7 +283,7 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
                   52 + index * 22
                 }, 420 ${108 + index * 12}, 545 ${72 + index * (112 / Math.max(flowCount - 1, 1))}`}
                 fill="none"
-                stroke={convectionVelocity > 0.5 ? '#38bdf8' : '#a78bfa'}
+                stroke={convectionVelocity > 0.5 ? '#38bdf8' : '#e879f9'}
                 strokeOpacity={flowOpacity}
                 strokeWidth={convectionStroke}
                 markerEnd={`url(#arrow-${type})`}
@@ -315,7 +315,7 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
                 cy="120"
                 r={radiationRadius + 24 + index * 25}
                 fill="none"
-                stroke={index === 0 ? '#f97316' : index === 1 ? '#a78bfa' : '#38bdf8'}
+                stroke={index === 0 ? '#f97316' : index === 1 ? '#e879f9' : '#38bdf8'}
                 strokeWidth={ringStroke - index * 0.8}
                 strokeOpacity={ringOpacity - index * 0.16}
               />
@@ -328,7 +328,7 @@ export function ThermalDiagram({ type, conduction, convection, radiation }: Ther
                 x2="535"
                 y1={56 + index * (128 / Math.max(radiationLineCount - 1, 1))}
                 y2={56 + index * (128 / Math.max(radiationLineCount - 1, 1))}
-                stroke="#a78bfa"
+                stroke="#e879f9"
                 strokeWidth={clamp(3 + epsilon * 5, 3, 8)}
                 strokeOpacity={ringOpacity}
                 markerEnd={`url(#arrow-${type})`}

@@ -1,5 +1,6 @@
 import { Printer } from 'lucide-react';
 import { formatNumber } from '../../lib/calculations';
+import { escapeHtml } from '../../lib/html';
 import type { SimulationValue } from '../../types';
 
 interface PrintReportButtonProps {
@@ -35,19 +36,19 @@ export function PrintReportButton({
     if (!container) return;
 
     const paramRows = Object.entries(parameters)
-      .map(([key, value]) => `<tr><td>${key}</td><td>${formatValue(value)}</td></tr>`)
+      .map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(formatValue(value))}</td></tr>`)
       .join('');
     const resultRows = Object.entries(results)
-      .map(([key, value]) => `<tr><td>${key}</td><td>${formatValue(value)}</td></tr>`)
+      .map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(formatValue(value))}</td></tr>`)
       .join('');
 
     container.innerHTML = `
       <article style="font-family: 'Rethink Sans', sans-serif; padding: 24px; color: #0f172a;">
         <h1 style="font-size: 22px; margin: 0 0 4px;">ThermaLab — Informe de práctica</h1>
-        <p style="margin: 0 0 16px; color: #475569;">Universidad Técnica de Manabí · Transferencia de calor</p>
-        <h2 style="font-size: 18px; margin: 0 0 8px;">${title}</h2>
-        <p style="margin: 0 0 4px;"><strong>Módulo:</strong> ${module}</p>
-        <p style="margin: 0 0 16px;"><strong>Práctica:</strong> ${practice}</p>
+        <p style="margin: 0 0 16px; color: #475569;">Universidad Técnica de Manabí · Transferencia de calor · Grismaldo Bone</p>
+        <h2 style="font-size: 18px; margin: 0 0 8px;">${escapeHtml(title)}</h2>
+        <p style="margin: 0 0 4px;"><strong>Módulo:</strong> ${escapeHtml(module)}</p>
+        <p style="margin: 0 0 16px;"><strong>Práctica:</strong> ${escapeHtml(practice)}</p>
         <h3 style="font-size: 15px; margin: 16px 0 8px;">Parámetros</h3>
         <table style="width:100%; border-collapse: collapse; font-size: 13px;">
           <thead><tr><th style="text-align:left; border-bottom:1px solid #cbd5e1; padding:6px;">Variable</th><th style="text-align:left; border-bottom:1px solid #cbd5e1; padding:6px;">Valor</th></tr></thead>
@@ -60,16 +61,16 @@ export function PrintReportButton({
         </table>
         ${
           formula
-            ? `<h3 style="font-size: 15px; margin: 16px 0 8px;">Fórmula</h3><pre style="background:#f1f5f9; padding:12px; border-radius:8px; white-space:pre-wrap;">${formula}</pre>`
+            ? `<h3 style="font-size: 15px; margin: 16px 0 8px;">Fórmula</h3><pre style="background:#f1f5f9; padding:12px; border-radius:8px; white-space:pre-wrap;">${escapeHtml(formula)}</pre>`
             : ''
         }
         ${
           substituted
-            ? `<pre style="background:#fff7ed; padding:12px; border-radius:8px; white-space:pre-wrap;">${substituted}</pre>`
+            ? `<pre style="background:#fff7ed; padding:12px; border-radius:8px; white-space:pre-wrap;">${escapeHtml(substituted)}</pre>`
             : ''
         }
-        ${interpretation ? `<p style="margin-top:16px; font-size:13px;">${interpretation}</p>` : ''}
-        <p style="margin-top:24px; font-size:11px; color:#64748b;">Generado con ThermaLab · ${new Date().toLocaleString('es-EC')}</p>
+        ${interpretation ? `<p style="margin-top:16px; font-size:13px;">${escapeHtml(interpretation)}</p>` : ''}
+        <p style="margin-top:24px; font-size:11px; color:#64748b;">Generado con ThermaLab · ${escapeHtml(new Date().toLocaleString('es-EC'))}</p>
       </article>
     `;
 

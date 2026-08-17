@@ -4,7 +4,9 @@ Laboratorio virtual de transferencia de calor para explorar conducción, convecc
 
 **Desarrollador:** Grismaldo Bone
 
-Consola educativa con geometrías planas y radiales, caudal volumétrico, balance radiativo, fórmulas sustituidas, diagramas SVG animados, historial local, export JSON e informe imprimible (PDF).
+Consola educativa con geometrías planas y radiales, caudal volumétrico, balance radiativo, fórmulas sustituidas, diagramas SVG animados, historial local, export JSON/CSV e informe imprimible (PDF).
+
+Incluye radio crítico de aislamiento, coeficiente global U, números de Biot y Rayleigh, ley de Wien y correlaciones de Churchill–Bernstein (cilindro) y capa límite mixta (placa).
 
 ## Demostración en vivo
 
@@ -53,11 +55,12 @@ Q = h * A * (T_superficie - T_fluido)
 Q_v = v * A
 Re = (rho * v * L) / mu
 Nu_placa_laminar = 0.664 * Re^0.5 * Pr^(1/3)
-Nu_placa_turbulento = 0.037 * Re^0.8 * Pr^(1/3)
-Nu_cilindro ≈ C * Re^n * Pr^(1/3)
+Nu_placa_mixta = (0.037 * Re^0.8 - 871) * Pr^(1/3)
+Nu_cilindro = Churchill–Bernstein
 h = Nu * k_fluido / L
 Ra = (9.81 * beta * DeltaT * L^3) / (nu * alpha)
 Nu_natural = 0.59 * Ra^0.25
+Bi = h * L / k_solido
 ```
 
 ### Radiación
@@ -69,6 +72,8 @@ E = epsilon * E_b
 G_abs = epsilon * sigma * T_amb^4
 q_neto = E - G_abs
 Q = q_neto * A
+lambda_max = 2897.772 / T_K   (Wien, μm)
+h_rad = epsilon * sigma * (Ts^2 + Ta^2) * (Ts + Ta)
 ```
 
 Las temperaturas de radiación se convierten internamente de Celsius a Kelvin. Se asume superficie gris (α = ε) frente a un entorno grande.
@@ -77,7 +82,7 @@ Las temperaturas de radiación se convierten internamente de Celsius a Kelvin. S
 
 ### Materiales
 
-Cobre, aluminio, acero inoxidable, hormigón, ladrillo, vidrio, madera de roble, fibra de vidrio, lana de roca, poliuretano y aire estático.
+Cobre, aluminio, acero inoxidable, hormigón, ladrillo, vidrio, yeso, madera de roble, hielo, poliestireno expandido, fibra de vidrio, lana de roca, poliuretano y aire estático.
 
 ### Fluidos
 

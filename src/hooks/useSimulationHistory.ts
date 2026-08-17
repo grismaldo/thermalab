@@ -32,6 +32,28 @@ export function useSimulationHistory() {
     );
   };
 
+  const duplicateSimulation = (id: string) => {
+    const source = simulations.find((simulation) => simulation.id === id);
+    if (!source) return null;
+    return saveSimulation({
+      name: `${source.name} (copia)`,
+      module: source.module,
+      practice: source.practice,
+      parameters: source.parameters,
+      results: source.results,
+    });
+  };
+
+  const importSimulations = (incoming: SavedSimulation[]) => {
+    const stamped = incoming.map((simulation) => ({
+      ...simulation,
+      id: createId(),
+      timestamp: simulation.timestamp || new Date().toISOString(),
+    }));
+    setSimulations((current) => [...stamped, ...current]);
+    return stamped.length;
+  };
+
   const resetHistory = () => {
     setSimulations([]);
   };
@@ -54,6 +76,8 @@ export function useSimulationHistory() {
     saveSimulation,
     deleteSimulation,
     updateSimulationName,
+    duplicateSimulation,
+    importSimulations,
     resetHistory,
   };
 }

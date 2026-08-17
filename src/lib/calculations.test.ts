@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  biotNumber,
   calculateCylinderConduction,
   calculateFlatConduction,
   calculateForcedConvection,
@@ -7,10 +8,20 @@ import {
   calculateNaturalConvectionAir,
   calculateRadiation,
   calculateSphereConduction,
+  churchillBernsteinNu,
+  coolingBiot,
+  criticalInsulationRadius,
+  insulationEffect,
+  linearizedRadiationCoefficient,
+  lumpedCapacitanceValid,
+  overallUFlat,
+  plateNusselt,
   SIGMA,
+  temperatureGradientWarning,
   toKelvin,
   validateRadii,
   volumetricFlowRate,
+  wienPeakWavelengthUm,
 } from './calculations';
 import type { Fluid } from '../types';
 
@@ -90,11 +101,19 @@ describe('convection', () => {
     expect(result.q).toBeCloseTo(result.h * 0.25 * 55, 6);
   });
 
-  it('usa correlación de cilindro cuando geometry=cylinder', () => {
+  it('usa Churchill–Bernstein cuando geometry=cylinder', () => {
     const plate = calculateForcedConvection(air, 2, 0.05, 0.2, 80, 25, 'plate');
     const cylinder = calculateForcedConvection(air, 2, 0.05, 0.2, 80, 25, 'cylinder');
     expect(cylinder.geometry).toBe('cylinder');
     expect(cylinder.nu).not.toBe(plate.nu);
+    expect(cylinder.nu).toBeCloseTo(churchillBernsteinNu(cylinder.re, air.Pr), 8);
+  });
+
+  it('usa capa límite mixta en placa cuando Re ≥ 5×10⁵', () => {
+    const fast = calculateForcedConvection(air, 80, 0.5, 0.25, 80, 25, 'plate');
+    expect(fast.re).toBeGreaterThan(5e5);
+    expect(fast.nu).toBeCloseTo(plateNusselt(fast.re, air.Pr), 8);
+    expect(fast.regime).not.toBe('Laminar');
   });
 
   it('calcula convección natural con Pr', () => {
@@ -119,5 +138,37 @@ describe('radiation', () => {
     expect(result.absorbedPower).toBeCloseTo(epsilon * SIGMA * Ta ** 4, 6);
     expect(result.netFlux).toBeCloseTo(result.emittedPower - result.absorbedPower, 8);
     expect(result.q).toBeCloseTo(result.netFlux * area, 8);
+  });
+
+  it('calcula el pico de Wien y el coeficiente radiativo linealizado', () => {
+    expect(wienPeakWavelengthUm(26.85)).toBeCloseTo(2897.772 / 300, 5);
+    const hRad = linearizedRadiationCoefficient(0.9, 227, 27);
+    const Ts = toKelvin(227);
+    const Ta = toKelvin(27);
+    expect(hRad).toBeCloseTo(0.9 * SIGMA * (Ts ** 2 + Ta ** 2) * (Ts + Ta), 8);
+  });
+});
+
+describe('insights de laboratorio', () => {
+  it('calcula radio crítico de aislamiento y el efecto sobre la pérdida', () => {
+    const rCrit = criticalInsulationRadius(0.04, 10);
+    expect(rCrit).toBeCloseTo(0.004, 10);
+    expect(insulationEffect(0.003, rCrit)).toBe('aumenta-perdida');
+    expect(insulationEffect(0.02, rCrit)).toBe('reduce-perdida');
+  });
+
+  it('calcula Biot, validez lumped y U global de pared plana', () => {
+    expect(biotNumber(10, 0.0025, 16)).toBeCloseTo(0.0015625, 8);
+    expect(lumpedCapacitanceValid(0.05)).toBe(true);
+    expect(lumpedCapacitanceValid(0.2)).toBe(false);
+    expect(coolingBiot(20)).toBeCloseTo(20 * 0.0025 / 16, 10);
+    const u = overallUFlat(0.72, 0.2, 10, 10);
+    expect(u).toBeCloseTo(1 / (0.1 + 0.2 / 0.72 + 0.1), 8);
+  });
+
+  it('advierte flujo inverso o nulo', () => {
+    expect(temperatureGradientWarning(30, 18)).toBeNull();
+    expect(temperatureGradientWarning(18, 30)).toMatch(/inverso/);
+    expect(temperatureGradientWarning(20, 20)).toMatch(/diferencia/);
   });
 });
