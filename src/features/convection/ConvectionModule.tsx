@@ -4,17 +4,24 @@ import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart';
 import { TemperatureProfileChart } from '../../components/charts/TemperatureProfileChart';
 import { ThermalDiagram } from '../../components/charts/ThermalDiagram';
 import { Card } from '../../components/ui/Card';
+import { CsvExportButton } from '../../components/ui/CsvExportButton';
 import { ExportButton } from '../../components/ui/ExportButton';
 import { FormulaDisplay } from '../../components/ui/FormulaDisplay';
+import { InsightCard } from '../../components/ui/InsightCard';
 import { ModuleShell } from '../../components/ui/ModuleShell';
+import { PracticeBanner } from '../../components/ui/PracticeBanner';
 import { PrintReportButton } from '../../components/ui/PrintReportButton';
 import { ResultCard } from '../../components/ui/ResultCard';
 import { SliderInput } from '../../components/ui/SliderInput';
+import { WarningBanner } from '../../components/ui/WarningBanner';
 import {
   calculateForcedConvection,
   calculateNaturalConvectionAir,
+  coolingBiot,
   formatNumber,
   generateCoolingProfile,
+  lumpedCapacitanceValid,
+  temperatureGradientWarning,
   validateCelsius,
   validateNonNegative,
   validatePositive,
@@ -27,6 +34,7 @@ import {
   INPUT_ERROR,
   INVALID,
   inputClass,
+  kelvinHint,
   numberFrom,
   selectClass,
   stringFrom,
@@ -100,6 +108,11 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
     [area, fluidC, forcedResult, surfaceC],
   );
 
+  const bi = forcedResult ? coolingBiot(forcedResult.h) : 0;
+  const lumpedOk = forcedResult ? lumpedCapacitanceValid(bi) : false;
+  const gradientWarning = temperatureGradientWarning(surfaceC, fluidC);
+  const practiceMeta = practice === NATURAL_FORCED_PRACTICE.name ? NATURAL_FORCED_PRACTICE : COOLING_PRACTICE;
+
   const comparisonData = useMemo(() => {
     if (errors.length > 0) return [];
     return ['air', 'water', 'ethanol', 'oil'].map((id) => {
@@ -169,6 +182,8 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
       naturalH: naturalResult?.h ?? null,
       naturalQ: naturalResult?.q ?? null,
       ra: naturalResult?.ra ?? null,
+      biot: forcedResult ? bi : null,
+      lumpedValid: forcedResult ? lumpedOk : null,
     },
   };
 
@@ -217,6 +232,7 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
         },
       ]}
     >
+      <PracticeBanner name={practiceMeta.name} objective={practiceMeta.objective} />
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card title="Variables de entrada" subtitle={practice}>
           <div className="space-y-4">
@@ -349,6 +365,7 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
               unit="°C"
               onChange={setSurfaceC}
               error={validateCelsius('Temperatura superficial', surfaceC)}
+              hint={kelvinHint(surfaceC)}
             />
             <SliderInput
               label="Temperatura del fluido"
@@ -359,6 +376,7 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
               unit="°C"
               onChange={setFluidC}
               error={validateCelsius('Temperatura del fluido', fluidC)}
+              hint={kelvinHint(fluidC)}
             />
 
             <div className="flex flex-wrap gap-2 pt-2">
@@ -372,6 +390,10 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
                 Guardar
               </button>
               <ExportButton filename="thermalab-conveccion.json" data={exportData} />
+              <CsvExportButton
+                filename="thermalab-conveccion.csv"
+                records={[{ ...exportData.parameters, ...exportData.results, name: simulationName, practice }]}
+              />
               <PrintReportButton
                 title={simulationName}
                 module="Convección"
@@ -386,7 +408,12 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+          <WarningBanner message={gradientWarning} />
+          <WarningBanner
+            tone="info"
+            message={forcedResult && !lumpedOk ? 'Bi ≥ 0,1: el perfil de enfriamiento lumped es solo orientativo.' : null}
+          />
           <ThermalDiagram
             type="convection"
             convection={{
@@ -436,6 +463,17 @@ export function ConvectionModule({ loadedSimulation, onLoaded, onSave }: Convect
               }
             />
           </div>
+          {forcedResult && (
+            <InsightCard
+              title="Número de Biot (placa 5 mm)"
+              value={formatNumber(bi, 4)}
+              note={
+                lumpedOk
+                  ? 'Bi < 0,1: la temperatura del sólido es casi uniforme; el modelo lumped es válido.'
+                  : 'Bi ≥ 0,1: hay gradiente interno; el enfriamiento lumped es una aproximación.'
+              }
+            />
+          )}
         </div>
       </div>
 

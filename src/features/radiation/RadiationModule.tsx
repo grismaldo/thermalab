@@ -4,27 +4,35 @@ import { ComparisonBarChart } from '../../components/charts/ComparisonBarChart';
 import { TemperatureProfileChart } from '../../components/charts/TemperatureProfileChart';
 import { ThermalDiagram } from '../../components/charts/ThermalDiagram';
 import { Card } from '../../components/ui/Card';
+import { CsvExportButton } from '../../components/ui/CsvExportButton';
 import { ExportButton } from '../../components/ui/ExportButton';
 import { FormulaDisplay } from '../../components/ui/FormulaDisplay';
+import { InsightCard } from '../../components/ui/InsightCard';
 import { ModuleShell } from '../../components/ui/ModuleShell';
+import { PracticeBanner } from '../../components/ui/PracticeBanner';
 import { PrintReportButton } from '../../components/ui/PrintReportButton';
 import { ResultCard } from '../../components/ui/ResultCard';
 import { SliderInput } from '../../components/ui/SliderInput';
+import { WarningBanner } from '../../components/ui/WarningBanner';
 import {
   calculateRadiation,
   formatNumber,
   generateEmissivityCurve,
   generateRadiationTemperatureCurve,
+  linearizedRadiationCoefficient,
   SIGMA,
+  temperatureGradientWarning,
   toKelvin,
   validateCelsius,
   validateEmissivity,
   validatePositive,
+  wienPeakWavelengthUm,
 } from '../../lib/calculations';
 import {
   INPUT_ERROR,
   INVALID,
   inputClass,
+  kelvinHint,
   numberFrom,
   selectClass,
   stringFrom,
@@ -75,6 +83,12 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
     () => (errors.length === 0 ? calculateRadiation(epsilon, area, surfaceC, ambientC) : null),
     [ambientC, area, epsilon, errors.length, surfaceC],
   );
+
+  const peakWavelength = wienPeakWavelengthUm(surfaceC);
+  const hRad =
+    errors.length === 0 ? linearizedRadiationCoefficient(epsilon, surfaceC, ambientC) : 0;
+  const gradientWarning = temperatureGradientWarning(surfaceC, ambientC);
+  const practiceMeta = practice === BLACKBODY_PRACTICE.name ? BLACKBODY_PRACTICE : EMISSIVITY_PRACTICE;
 
   const emissivityCurve = useMemo(
     () => (errors.length === 0 ? generateEmissivityCurve(area, surfaceC, ambientC) : []),
@@ -146,6 +160,8 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
       absorbedPower: result?.absorbedPower ?? null,
       netFlux: result?.netFlux ?? null,
       sigma: SIGMA,
+      wienPeakUm: peakWavelength,
+      hRad,
     },
   };
 
@@ -193,6 +209,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
         },
       ]}
     >
+      <PracticeBanner name={practiceMeta.name} objective={practiceMeta.objective} />
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card title="Variables de entrada" subtitle={practice}>
           <div className="space-y-4">
@@ -249,6 +266,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
               unit="°C"
               onChange={setSurfaceC}
               error={validateCelsius('Temperatura superficial', surfaceC)}
+              hint={kelvinHint(surfaceC)}
             />
             <SliderInput
               label="Temperatura ambiente"
@@ -259,6 +277,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
               unit="°C"
               onChange={setAmbientC}
               error={validateCelsius('Temperatura ambiente', ambientC)}
+              hint={kelvinHint(ambientC)}
             />
 
             <div className="flex flex-wrap gap-2 pt-2">
@@ -266,12 +285,16 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
                 type="button"
                 onClick={saveActiveSimulation}
                 disabled={errors.length > 0}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-violet-300/40 bg-violet-500/18 px-3 py-2 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-fuchsia-300/40 bg-fuchsia-500/18 px-3 py-2 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Save size={16} aria-hidden="true" />
                 Guardar
               </button>
               <ExportButton filename="thermalab-radiacion.json" data={exportData} />
+              <CsvExportButton
+                filename="thermalab-radiacion.csv"
+                records={[{ ...exportData.parameters, ...exportData.results, name: simulationName, practice }]}
+              />
               <PrintReportButton
                 title={simulationName}
                 module="Radiación"
@@ -286,7 +309,8 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
           </div>
         </Card>
 
-        <div className="space-y-5">
+        <div className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+          <WarningBanner message={gradientWarning} />
           <ThermalDiagram
             type="radiation"
             radiation={{
@@ -330,6 +354,22 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
               interpretation={`${surface.name}: ε = ${formatNumber(epsilon, 3)} respecto al ideal.`}
             />
           </div>
+          {result && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <InsightCard
+                title="Pico de Wien"
+                value={formatNumber(peakWavelength, 2)}
+                unit="μm"
+                note="Longitud de onda del máximo de emisión. A temperatura ambiente cae en el infrarrojo lejano."
+              />
+              <InsightCard
+                title="h radiativo linealizado"
+                value={formatNumber(hRad, 3)}
+                unit="W/m²·K"
+                note="Q ≈ h_rad · A · (T_s − T_amb) con h_rad = εσ(Ts²+T∞²)(Ts+T∞)."
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -337,7 +377,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
         <Card title="Calor radiado según la emisividad" subtitle="ε desde 0 hasta 1,0">
           <TemperatureProfileChart
             data={emissivityCurve}
-            series={[{ dataKey: 'q', name: 'Q', color: '#a78bfa' }]}
+            series={[{ dataKey: 'q', name: 'Q', color: '#e879f9' }]}
             xLabel="Emisividad"
             yLabel="Q (W)"
           />
@@ -348,7 +388,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
             series={[
               { dataKey: 'e1', name: 'ε 1,0', color: '#f97316' },
               { dataKey: 'e0_5', name: 'ε 0,5', color: '#38bdf8' },
-              { dataKey: 'e0_1', name: 'ε 0,1', color: '#a78bfa' },
+              { dataKey: 'e0_1', name: 'ε 0,1', color: '#e879f9' },
             ]}
             xLabel="Temperatura"
             yLabel="Q (W)"
@@ -358,7 +398,7 @@ export function RadiationModule({ loadedSimulation, onLoaded, onSave }: Radiatio
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Card title="Comparación entre superficies" subtitle="Misma área y temperatura, distinta emisividad">
-          <ComparisonBarChart data={comparisonData} dataKey="q" name="Q (W)" color="#a78bfa" />
+          <ComparisonBarChart data={comparisonData} dataKey="q" name="Q (W)" color="#e879f9" />
         </Card>
         <Card title="Fórmula activa" subtitle={practice}>
           <FormulaDisplay

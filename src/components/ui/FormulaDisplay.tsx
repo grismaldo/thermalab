@@ -15,7 +15,7 @@ export function FormulaDisplay({ title, formula, substituted, note }: FormulaDis
       <code className="mt-2 block overflow-x-auto rounded-lg bg-slate-900/70 px-3 py-2.5 font-mono text-sm leading-relaxed text-orange-100">
         {substituted}
       </code>
-      {note && <p className="mt-3 text-xs leading-relaxed text-slate-400">{note}</p>}
+      { note && <p className="mt-3 text-xs leading-relaxed text-slate-300">{note}</p> }
     </div>
   );
 }

@@ -21,7 +21,7 @@ interface ModuleShellProps {
 const toneClass: Record<NonNullable<PracticeAction['tone']>, string> = {
   warm: 'border-orange-300/40 bg-orange-400/12 text-orange-100 hover:bg-orange-400/20',
   cold: 'border-cyan-300/40 bg-cyan-400/12 text-cyan-100 hover:bg-cyan-400/20',
-  rad: 'border-violet-300/40 bg-violet-400/12 text-violet-100 hover:bg-violet-400/20',
+  rad: 'border-fuchsia-300/40 bg-fuchsia-400/12 text-fuchsia-100 hover:bg-fuchsia-400/20',
 };
 
 export function ModuleShell({
@@ -43,8 +43,8 @@ export function ModuleShell({
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
           <Badge tone={badgeTone}>{badge}</Badge>
-          <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-50 md:text-3xl">{title}</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">{description}</p>
+          <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-50 md:text-3xl">{title}</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-300">{description}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {practices.map((practice) => (
