@@ -45,7 +45,7 @@ export function PrintReportButton({
     container.innerHTML = `
       <article style="font-family: 'Rethink Sans', sans-serif; padding: 24px; color: #0f172a;">
         <h1 style="font-size: 22px; margin: 0 0 4px;">ThermaLab — Informe de práctica</h1>
-        <p style="margin: 0 0 16px; color: #475569;">Universidad Técnica de Manabí · Transferencia de calor · Grismaldo Bone</p>
+        <p style="margin: 0 0 16px; color: #475569;">Universidad Técnica de Manabí · Transferencia de calor · Grismaldo Bope</p>
         <h2 style="font-size: 18px; margin: 0 0 8px;">${escapeHtml(title)}</h2>
         <p style="margin: 0 0 4px;"><strong>Módulo:</strong> ${escapeHtml(module)}</p>
         <p style="margin: 0 0 16px;"><strong>Práctica:</strong> ${escapeHtml(practice)}</p>
