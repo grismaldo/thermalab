@@ -76,7 +76,7 @@ Sliders con `accent-cyan-400` nativo; el look varía por navegador. Errores en `
 
 El crédito del desarrollador está solo en una card del dashboard; el footer no lo menciona.
 
-**Mejora:** Incluir “Grismaldo Bone” también en el footer para consistencia de atribución.
+**Mejora:** Incluir “Grismaldo Bope” también en el footer para consistencia de atribución.
 
 ## Priorización sugerida
 
