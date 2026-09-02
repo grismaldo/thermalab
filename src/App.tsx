@@ -21,7 +21,7 @@ const RadiationModule = lazy(() =>
   import('./features/radiation/RadiationModule').then((mod) => ({ default: mod.RadiationModule })),
 );
 
-const developers = 'Grismaldo Bone';
+const developers = 'Grismaldo Bope';
 
 function ModuleFallback() {
   return (
